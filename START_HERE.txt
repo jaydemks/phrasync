@@ -1,0 +1,22 @@
+PHRASYNC STUDIO: QUICK START
+
+WINDOWS
+Double-click: run_windows.bat
+
+LINUX
+Open a terminal in this folder and run:
+  chmod +x run_linux.sh scripts/*.sh
+  ./run_linux.sh
+
+MACOS
+Control-click run_macos.command, choose Open, and approve it.
+
+The first launch installs dependencies, so it can take several minutes.
+The editor opens at: http://127.0.0.1:5500
+
+Use the power button in the top bar to stop Phrasync and release the port.
+If the port is already occupied, the launcher reopens Phrasync or chooses the
+next available port automatically.
+
+Full instructions: README.md
+Technical notes: NOTES.md

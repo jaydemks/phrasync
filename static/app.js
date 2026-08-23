@@ -1,0 +1,355 @@
+"use strict";
+
+function bindControls() {
+  els.projectTitle.addEventListener("input", () => { project.title = els.projectTitle.value; scheduleSave(); });
+  $$("button", els.projectMode).forEach(button => button.addEventListener("click", () => {
+    project.mode = button.dataset.value;
+    applyModeUI(); scheduleSave();
+  }));
+  els.themeToggle.addEventListener("click", () => {
+    const theme = els.root.dataset.theme === "dark" ? "light" : "dark";
+    els.root.dataset.theme = theme; localStorage.setItem(THEME_KEY, theme);
+    timeline?.refreshTheme();
+  });
+  els.criticButton.addEventListener("click", runCritic);
+  els.renderButton.addEventListener("click", startRender);
+  els.audioPick.addEventListener("click", () => els.audioInput.click());
+  els.audioInput.addEventListener("change", () => handleAudioFile(els.audioInput.files[0]));
+  els.backgroundPick.addEventListener("click", () => els.backgroundInput.click());
+  els.backgroundInput.addEventListener("change", () => handleBackgroundFile(els.backgroundInput.files[0]));
+  els.ocrPick.addEventListener("click", () => els.ocrInput.click());
+  els.ocrInput.addEventListener("change", () => handleOCRFile(els.ocrInput.files[0]));
+  els.lyricsPick.addEventListener("click", () => els.lyricsInput.click());
+  els.lyricsInput.addEventListener("change", () => handleLyricsFile(els.lyricsInput.files[0]));
+  els.fontPick.addEventListener("click", () => els.fontInput.click());
+  els.fontInput.addEventListener("change", () => handleFontFile(els.fontInput.files[0]));
+  els.transcribeButton.addEventListener("click", () => transcribeSong());
+  els.cancelTranscription.addEventListener("click", stopTranscription);
+
+  $$("button", els.backgroundType).forEach(button => button.addEventListener("click", () => {
+    project.background.type = button.dataset.value;
+    const asset = activeBackgroundAsset(project.background.type);
+    project.background.assetId = asset?.id || null;
+    project.background.url = asset?.url || null;
+    project.background.name = asset?.name || null;
+    applyBackgroundPreview(); scheduleSave();
+  }));
+  const sceneBindings = [
+    [els.sceneKit, "sceneKit", value => value],
+    [els.sceneDirection, "sceneDirection", value => value],
+    [els.textSpace, "textSpace", value => value],
+    [els.environmentMode, "environmentMode", value => value],
+    [els.weather, "weather", value => value],
+    [els.daytime, "daytime", value => value],
+    [els.season, "season", value => value],
+    [els.sceneSpeed, "sceneSpeed", value => Number(value) / 100],
+    [els.sceneDensity, "sceneDensity", value => Number(value) / 100],
+    [els.waveColor, "waveColor", value => value],
+    [els.waveIntensity, "waveIntensity", value => Number(value) / 100]
+  ];
+  for (const [element, key, convert] of sceneBindings) {
+    element.addEventListener("input", () => {
+      project.background[key] = convert(element.value);
+      if (element.type === "range") updateRangeUI(element);
+      if ([els.environmentMode, els.weather, els.daytime, els.season].includes(element)) {
+        applyEnvironmentUI();
+      }
+      scheduleSave();
+    });
+  }
+  els.textSpace.addEventListener("change", () => {
+    project.background.textSpace = els.textSpace.value;
+    updatePresetPresentation(); restartLyricAnimation(); scheduleSave();
+  });
+  els.sceneBeat.addEventListener("change", () => {
+    project.background.sceneBeat = els.sceneBeat.checked;
+    scheduleSave();
+  });
+  els.sceneWave.addEventListener("change", () => {
+    project.background.sceneWave = els.sceneWave.checked;
+    els.waveControls.hidden = !els.sceneWave.checked;
+    scheduleSave();
+  });
+  els.sceneReseed.addEventListener("click", () => {
+    project.background.sceneSeed = Math.floor(Math.random() * 100000) + 1;
+    scheduleSave();
+    toast("World regenerated.");
+  });
+
+  els.visualSelect.addEventListener("change", () => { project.background.visual = els.visualSelect.value; scheduleSave(); });
+  els.visualSelect.addEventListener("change", applyBackgroundTypeUI);
+
+  const styleBindings = [
+    [els.stylePreset, "preset", value => value],
+    [els.fontPreset, "fontPreset", value => value],
+    [els.fontSize, "fontSize", Number],
+    [els.topScale, "topScale", value => Number(value) / 100],
+    [els.maxWidth, "maxWidth", Number],
+    [els.positionY, "positionY", Number],
+    [els.offset3DX, "offset3DX", Number],
+    [els.offset3DY, "offset3DY", Number],
+    [els.lineGap, "lineGap", Number],
+    [els.textColor, "textColor", value => value],
+    [els.accentColor, "accentColor", value => value],
+    [els.accentColor2, "accentColor2", value => value],
+    [els.strokeColor, "strokeColor", value => value],
+    [els.animationSelect, "animation", Number],
+    [els.strokeWidth, "strokeWidth", Number],
+    [els.shadow, "shadow", Number]
+  ];
+  for (const [element, key, convert] of styleBindings) {
+    element.addEventListener("input", () => {
+      project.style[key] = convert(element.value);
+      if (element.type === "range") updateRangeUI(element);
+      applyStageStyle(); scheduleSave();
+    });
+  }
+  els.uppercaseToggle.addEventListener("change", () => { project.style.uppercase = els.uppercaseToggle.checked; restartLyricAnimation(); scheduleSave(); });
+  els.beatReactToggle.addEventListener("change", () => { project.style.beatReact = els.beatReactToggle.checked; scheduleSave(); });
+  els.stylePreset.addEventListener("change", () => {
+    // Set it here too: "change" can arrive without the generic "input" binding
+    // having run, and the preset drives the whole layout.
+    project.style.preset = els.stylePreset.value;
+    updatePresetHint(); restartLyricAnimation(); scheduleSave();
+  });
+
+  els.analyzeButton.addEventListener("click", () => ensureAnalysis(true));
+  els.autoAlignButton.addEventListener("click", runAutoAlign);
+  els.timingOffset.addEventListener("input", () => {
+    project.timing.offset = Number(els.timingOffset.value) / 1000;
+    updateRangeUI(els.timingOffset);
+    restartLyricAnimation(); scheduleSave();
+  });
+  els.wordLead.addEventListener("input", () => {
+    project.style.wordLead = Number(els.wordLead.value) / 1000;
+    updateRangeUI(els.wordLead);
+    restartLyricAnimation(); scheduleSave();
+  });
+  els.snapWindow.addEventListener("change", () => { project.timing.snapWindow = Number(els.snapWindow.value); scheduleSave(); });
+  els.snapStrength.addEventListener("change", () => { project.timing.snapStrength = Number(els.snapStrength.value); scheduleSave(); });
+  els.snapPhrasesToggle.addEventListener("change", () => { project.timing.snapPhrases = els.snapPhrasesToggle.checked; scheduleSave(); });
+
+  els.wordBack.addEventListener("click", () => nudgeWord(-0.02));
+  els.wordForward.addEventListener("click", () => nudgeWord(0.02));
+  els.tapSyncButton.addEventListener("click", toggleTapSync);
+  els.splitCueButton.addEventListener("click", splitCueAtPlayhead);
+  els.clearWordsButton.addEventListener("click", resetCueWords);
+
+  const backgroundBindings = [
+    [els.shade, "shade", value => Number(value) / 100],
+    [els.visualIntensity, "visualIntensity", value => Number(value) / 100],
+    [els.grain, "grain", value => Number(value) / 100],
+    [els.motion, "motion", value => Number(value) / 100],
+    [els.blur, "blur", Number],
+    [els.backgroundColor, "backgroundColor", value => value],
+    [els.secondaryColor, "secondaryColor", value => value]
+  ];
+  for (const [element, key, convert] of backgroundBindings) {
+    element.addEventListener("input", () => {
+      project.background[key] = convert(element.value);
+      if (element.type === "range") updateRangeUI(element);
+      applyStageStyle(); scheduleSave();
+    });
+  }
+
+  els.aspectSelect.addEventListener("change", () => { project.canvas.aspect = els.aspectSelect.value; setCanvasDimensions(); });
+  els.resolutionSelect.addEventListener("change", setCanvasDimensions);
+  els.fpsSelect.addEventListener("change", setCanvasDimensions);
+  els.qualitySelect.addEventListener("change", () => { project.export.crf = Number(els.qualitySelect.value); scheduleSave(); });
+  els.safeAreaToggle.addEventListener("change", applyStageStyle);
+
+  els.playButton.addEventListener("click", togglePlay);
+  els.audioPlayer.addEventListener("play", updatePlayButton);
+  els.audioPlayer.addEventListener("pause", updatePlayButton);
+  els.audioPlayer.addEventListener("ended", updatePlayButton);
+  els.audioPlayer.addEventListener("error", () => reportMediaPreviewError(els.audioPlayer, "Source media"));
+  els.backgroundVideo.addEventListener("error", () => reportMediaPreviewError(els.backgroundVideo, "Background video"));
+  els.audioPlayer.addEventListener("loadedmetadata", () => {
+    if (Number.isFinite(els.audioPlayer.duration)) {
+      project.audio.duration = els.audioPlayer.duration;
+      project.duration = els.audioPlayer.duration;
+      updateDurationUI(); scheduleSave();
+    }
+  });
+  els.seekBar.addEventListener("input", () => seekTo(els.seekBar.value));
+  els.volumeSlider.addEventListener("input", () => { els.audioPlayer.volume = Number(els.volumeSlider.value); updateRangeUI(els.volumeSlider); });
+  els.muteButton.addEventListener("click", () => {
+    els.audioPlayer.muted = !els.audioPlayer.muted;
+    els.muteButton.textContent = els.audioPlayer.muted ? "○" : "◕";
+  });
+  els.restartAnimation.addEventListener("click", restartLyricAnimation);
+  els.fullscreenButton.addEventListener("click", () => els.stage.requestFullscreen?.());
+
+  els.appendBulkButton.addEventListener("click", () => createCuesFromLines(els.bulkLyrics.value.split(/\r?\n/), false));
+  els.replaceBulkButton.addEventListener("click", () => createCuesFromLines(els.bulkLyrics.value.split(/\r?\n/), true));
+  els.addCueButton.addEventListener("click", () => {
+    const start = currentPlaybackTime();
+    const cue = { id: `cue-${Date.now()}`, start, end: start + 2.5, text: "NEW LYRIC", words: [] };
+    project.cues.push(cue); selectedCueId = cue.id; renderCueList(); updateDurationUI(); scheduleSave();
+    requestAnimationFrame(() => els.cueList.scrollTo({ top: els.cueList.scrollHeight, behavior: "smooth" }));
+  });
+  els.sortCuesButton.addEventListener("click", () => { normalizeCues(); renderCueList(); scheduleSave(); });
+  els.nudgeBackButton.addEventListener("click", () => nudgeSelected(-.1));
+  els.nudgeForwardButton.addEventListener("click", () => nudgeSelected(.1));
+  els.exportSrtButton.addEventListener("click", async () => {
+    // The server owns every format so the export matches what the renderer
+    // knows, including the per-word timing that SRT alone cannot carry.
+    const format = els.exportFormat.value;
+    const extension = format === "elrc" ? "lrc" : format;
+    try {
+      const body = await api(`/api/lyrics/export/${format}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cues: project.cues, style: project.style, canvas: project.canvas })
+      });
+      downloadBlob(body, `${safeFilename(project.title)}.${extension}`, "text/plain");
+      toast(`Exported ${format.toUpperCase()}.`, "success");
+    } catch (error) {
+      toast(`Export failed: ${error.message}`, "error");
+    }
+  });
+
+  els.loadProjectButton.addEventListener("click", () => els.projectInput.click());
+  els.projectInput.addEventListener("change", async () => {
+    const file = els.projectInput.files[0];
+    if (!file) return;
+    try {
+      els.audioPlayer.pause();
+      project = migrateProject(JSON.parse(await file.text()));
+      analysis = null;
+      analysisPending = false;
+      selectedWordIndex = 0;
+      tapArmed = false;
+      tapQueue = [];
+      selectedCueId = project.cues[0]?.id || null;
+      applyProjectToControls();
+      updateSyncSummary();
+      timeline?.fitAll();
+      seekTo(0);
+      scheduleSave();
+      toast("Project loaded. Media links refer to this local Phrasync workspace.", "success");
+      if (project.audioAssetId) ensureAnalysis();
+    } catch (error) { toast(`Invalid project: ${error.message}`, "error"); }
+    finally { els.projectInput.value = ""; }
+  });
+  els.saveProjectButton.addEventListener("click", () => downloadBlob(JSON.stringify(project, null, 2), `${safeFilename(project.title)}.phrasync.json`, "application/json"));
+  els.resetProjectButton.addEventListener("click", () => {
+    if (!confirm("Reset the current project and local autosave?")) return;
+    project = clone(DEFAULT_PROJECT); selectedCueId = project.cues[0].id; currentCueId = null;
+    localStorage.removeItem(STORAGE_KEY); applyProjectToControls(); seekTo(0); toast("Project reset.");
+  });
+
+  els.renderClose.addEventListener("click", () => els.renderDialog.close());
+  els.cancelRender.addEventListener("click", cancelRender);
+  window.addEventListener("keydown", event => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); startRender(); }
+    if (event.target.matches("input,textarea,select")) return;
+    if (event.code === "Space" && !event.target.matches("button")) { event.preventDefault(); togglePlay(); }
+    // Tap sync only listens once it is armed, so T stays free otherwise.
+    if (tapArmed && (event.key === "t" || event.key === "T")) { event.preventDefault(); handleTap(); }
+    if (event.key === "ArrowLeft" && event.shiftKey) { event.preventDefault(); nudgeWord(-0.02); }
+    if (event.key === "ArrowRight" && event.shiftKey) { event.preventDefault(); nudgeWord(0.02); }
+    if (event.key === "ArrowLeft" && !event.shiftKey) { event.preventDefault(); seekTo(currentPlaybackTime() - (event.altKey ? 0.05 : 1)); }
+    if (event.key === "ArrowRight" && !event.shiftKey) { event.preventDefault(); seekTo(currentPlaybackTime() + (event.altKey ? 0.05 : 1)); }
+    if (event.key === "w" || event.key === "W") { selectWordAtPlayhead(); }
+    if ((event.key === "s" || event.key === "S") && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault(); splitCueAtPlayhead();
+    }
+  });
+  new ResizeObserver(applyStageStyle).observe(els.stage);
+}
+
+function safeFilename(value) {
+  return String(value || "phrasync_project").replace(/[^a-z0-9_-]+/gi, "_").replace(/^_+|_+$/g, "").slice(0, 70) || "phrasync_project";
+}
+
+function initTheme() {
+  els.root.dataset.theme = localStorage.getItem(THEME_KEY) || localStorage.getItem(LEGACY_THEME_KEY) || "dark";
+}
+
+async function shutdownServer() {
+  if (!confirm("Save the current project and stop Phrasync?")) return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
+  try {
+    const response = await fetch("/api/shutdown", { method: "POST" });
+    if (!response.ok) throw new Error(await response.text());
+    document.body.innerHTML = '<main class="shutdown-screen"><h1>Phrasync stopped.</h1><p>You can close this tab. Port released.</p></main>';
+  } catch (error) {
+    toast(`Could not stop Phrasync: ${error.message}`, "error");
+  }
+}
+
+function showHfTokenStatus(status) {
+  els.hfTokenStatus.textContent = status.configured
+    ? `${status.masked} · ${status.source === "environment" ? "environment variable" : "saved locally"}`
+    : "Not configured";
+  els.hfTokenStatus.classList.toggle("configured", Boolean(status.configured));
+  els.hfTokenRemove.disabled = !status.canRemove;
+}
+
+async function openSettings() {
+  els.hfTokenInput.value = "";
+  els.hfTokenInput.type = "password";
+  els.hfTokenReveal.textContent = "Show";
+  try {
+    const result = await api("/api/settings");
+    showHfTokenStatus(result.huggingFace);
+    if (!els.settingsDialog.open) els.settingsDialog.showModal();
+  } catch (error) {
+    toast(`Could not load settings: ${error.message}`, "error");
+  }
+}
+
+async function saveHfToken() {
+  const token = els.hfTokenInput.value.trim();
+  if (!token) { toast("Enter a Hugging Face token first.", "error"); return; }
+  try {
+    els.hfTokenSave.disabled = true;
+    const result = await api("/api/settings/hugging-face", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token })
+    });
+    els.hfTokenInput.value = "";
+    showHfTokenStatus(result.huggingFace);
+    toast("Hugging Face token saved locally.", "success");
+  } catch (error) {
+    toast(`Could not save token: ${error.message}`, "error");
+  } finally {
+    els.hfTokenSave.disabled = false;
+  }
+}
+
+async function removeHfToken() {
+  if (!confirm("Remove the saved Hugging Face token from this computer?")) return;
+  try {
+    const result = await api("/api/settings/hugging-face", { method: "DELETE" });
+    showHfTokenStatus(result.huggingFace);
+    toast("Saved Hugging Face token removed.");
+  } catch (error) {
+    toast(`Could not remove token: ${error.message}`, "error");
+  }
+}
+
+function init() {
+  initTheme();
+  setupTimeline();
+  bindControls();
+  applyProjectToControls();
+  els.audioPlayer.volume = Number(els.volumeSlider.value);
+  updateRangeUI(els.volumeSlider);
+  checkHealth();
+  els.settingsButton.addEventListener("click", openSettings);
+  els.hfTokenSave.addEventListener("click", saveHfToken);
+  els.hfTokenRemove.addEventListener("click", removeHfToken);
+  els.hfTokenReveal.addEventListener("click", () => {
+    const reveal = els.hfTokenInput.type === "password";
+    els.hfTokenInput.type = reveal ? "text" : "password";
+    els.hfTokenReveal.textContent = reveal ? "Hide" : "Show";
+  });
+  els.shutdownButton.addEventListener("click", shutdownServer);
+  if (project.audioAssetId) ensureAnalysis();
+  requestAnimationFrame(animationLoop);
+}
+
+init();

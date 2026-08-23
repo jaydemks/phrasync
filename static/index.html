@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
+  <title>Phrasync</title>
+  <link rel="icon" href="/favicon.svg" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand" aria-label="Phrasync">
+        <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="7" y="11" width="19" height="5.5" rx="2.75"/><rect x="12" y="23.5" width="21" height="5.5" rx="2.75"/><rect class="ph" x="20.5" y="7" width="3" height="26" rx="1.5"/></svg>
+        <div><strong>PHRA<span>//</span>SYNC</strong><small>local lyric &amp; subtitle studio</small></div>
+      </div>
+      <label class="project-name"><span>Project</span><input id="projectTitle" value="Untitled lyric video" maxlength="80" /></label>
+      <div class="top-actions">
+        <button class="chip status-chip" id="engineStatus" type="button" title="Local engine status"><i></i><span>Checking engine</span></button>
+        <button class="icon-button" id="settingsButton" type="button" title="Settings" aria-label="Open settings">⚙</button>
+        <button class="icon-button" id="shutdownButton" type="button" title="Save and stop Phrasync" aria-label="Stop Phrasync">⏻</button>
+        <button class="icon-button" id="themeToggle" type="button" title="Toggle light/dark theme" aria-label="Toggle theme">
+          <svg class="sun" viewBox="0 0 24 24"><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/><circle cx="12" cy="12" r="4"/></svg>
+        </button>
+        <button class="button secondary" id="criticButton" type="button">Critic check</button>
+        <button class="button primary" id="renderButton" type="button"><span>Render MP4</span><kbd>⌘↵</kbd></button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="panel controls-panel">
+        <div class="panel-title"><h2>Build</h2><span>live parameters</span></div>
+
+        <div class="mode-card">
+          <div class="segmented" id="projectMode" aria-label="Project mode">
+            <button type="button" data-value="lyric" class="active">Lyric Video</button>
+            <button type="button" data-value="subtitles">Subtitles</button>
+          </div>
+          <p id="modeDescription">Turn a song into a kinetic lyric video.</p>
+        </div>
+
+        <details open>
+          <summary data-section="assets" style="--section-tint: #5cd7ff"><span class="section-mark" aria-hidden="true">◈</span><span class="section-name">Assets</span></summary>
+          <div class="section-body">
+            <input class="visually-hidden" id="audioInput" type="file" accept="audio/*,.wav,.mp3,.m4a,.aac,.flac,.ogg,.opus" />
+            <button class="asset-tile" id="audioPick" type="button">
+              <span class="asset-icon">♪</span>
+              <span><strong id="audioName">Add song</strong><small id="audioHint">WAV, MP3, FLAC, M4A…</small></span>
+              <em>Choose</em>
+            </button>
+
+            <label class="field-label">Background</label>
+            <div class="segmented" id="backgroundType">
+              <button type="button" data-value="dynamic" class="active">Dynamic</button>
+              <button type="button" data-value="image">Image</button>
+              <button type="button" data-value="video">Video</button>
+            </div>
+            <div id="dynamicControls">
+              <label class="field"><span>Built-in visual</span>
+                <select id="visualSelect">
+                  <option value="aurora">Aurora drift</option>
+                  <option value="particles">Orbit particles</option>
+                  <option value="equalizer">Audio equalizer</option>
+                  <option value="grid">Neon horizon grid</option>
+                  <option value="scene3d">Odyssey 3D: WebGL flythrough</option>
+                  <option value="scene">Odyssey Flat: preview only</option>
+                </select>
+              </label>
+            </div>
+            <div id="sceneControls" hidden>
+                <div class="two-columns">
+                  <label class="field"><span>Environment</span>
+                    <select id="sceneKit">
+                      <option value="japan">Japan</option>
+                      <option value="italy">Italy</option>
+                      <option value="china">China</option>
+                      <option value="usa">United States</option>
+                    </select>
+                  </label>
+                  <label class="field"><span>Direction</span>
+                    <select id="sceneDirection">
+                      <option value="forward">Forward</option>
+                      <option value="ascend">Ascend</option>
+                      <option value="dive">Dive</option>
+                      <option value="drift">Drift</option>
+                      <option value="bank">Bank</option>
+                    </select>
+                  </label>
+                </div>
+                <label class="toggle-row small"><input id="sceneBeat" type="checkbox" /><span><b>Beat-synced elements</b><small>Pulse props and lights to the beat</small></span></label>
+                <label class="toggle-row small"><input id="sceneWave" type="checkbox" /><span><b>Particle flow</b><small>Frequency-reactive particle wave</small></span></label>
+                <div id="waveControls" hidden>
+                  <div class="color-row two">
+                    <label><span>Wave</span><input id="waveColor" type="color" value="#4de2ff" /></label>
+                  </div>
+                  <label class="range-field"><span>Wave intensity <output id="waveIntensityOut">100%</output></span><input id="waveIntensity" type="range" min="20" max="240" value="100" /></label>
+                </div>
+                <label class="range-field"><span>Speed <output id="sceneSpeedOut">100%</output></span><input id="sceneSpeed" type="range" min="20" max="260" value="100" /></label>
+                <label class="range-field"><span>Density <output id="sceneDensityOut">100%</output></span><input id="sceneDensity" type="range" min="20" max="180" value="100" /></label>
+                <button class="button wide" id="sceneReseed" type="button">Regenerate world</button>
+                <div id="environmentControls" class="environment-controls" hidden>
+                  <label class="field"><span>Environment</span>
+                    <select id="environmentMode">
+                      <option value="manual">Manual</option>
+                      <option value="auto">Automatic journey</option>
+                    </select>
+                  </label>
+                  <div id="manualEnvironmentControls">
+                    <div class="two-columns">
+                      <label class="field"><span>Weather</span>
+                        <select id="weather">
+                          <option value="clear">Clear</option><option value="rain">Rain</option>
+                          <option value="snow">Snow</option><option value="fog">Fog</option>
+                          <option value="storm">Storm</option><option value="leaves">Falling leaves</option>
+                        </select>
+                      </label>
+                      <label class="field"><span>Daytime</span>
+                        <select id="daytime">
+                          <option value="dawn">Dawn</option><option value="day">Day</option>
+                          <option value="sunset">Sunset</option><option value="night">Night</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label class="field"><span>Season</span>
+                      <select id="season">
+                        <option value="spring">Spring</option><option value="summer">Summer</option>
+                        <option value="autumn">Autumn</option><option value="winter">Winter</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p class="microcopy" id="environmentResolved">Summer · sunset · clear</p>
+                </div>
+            </div>
+            <div id="backgroundUploadWrap" hidden>
+              <input class="visually-hidden" id="backgroundInput" type="file" />
+              <button class="asset-tile compact" id="backgroundPick" type="button">
+                <span class="asset-icon">▧</span>
+                <span><strong id="backgroundName">Choose background</strong><small id="backgroundHint">PNG, JPG, WEBP</small></span>
+                <em>Choose</em>
+              </button>
+            </div>
+
+            <div class="asset-grid">
+              <div>
+                <input class="visually-hidden" id="ocrInput" type="file" accept="image/*,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff" />
+                <button class="mini-action" id="ocrPick" type="button"><b>OCR image</b><span>Extract lyric text</span></button>
+              </div>
+              <div>
+                <input class="visually-hidden" id="lyricsInput" type="file" accept=".srt,.lrc,.vtt,.txt,.json" />
+                <button class="mini-action" id="lyricsPick" type="button"><b id="lyricsPickTitle">Import lyrics</b><span>SRT, LRC, TXT</span></button>
+              </div>
+            </div>
+            <div class="inline-status" id="assetStatus" hidden></div>
+          </div>
+        </details>
+
+        <details open>
+          <summary data-section="transcribe" style="--section-tint: #65e4b1"><span class="section-mark" aria-hidden="true">◉</span><span class="section-name" id="transcriptionSectionName">Local transcription</span></summary>
+          <div class="section-body compact-fields">
+            <div class="two-columns">
+              <label class="field"><span>Whisper model</span>
+                <select id="whisperModel">
+                  <option value="tiny">Tiny: fastest</option>
+                  <option value="base" selected>Base: balanced</option>
+                  <option value="small">Small: cleaner</option>
+                  <option value="medium">Medium: accurate</option>
+                  <option value="large-v3">Large v3: best</option>
+                </select>
+              </label>
+              <label class="field"><span>Language mode</span><input id="whisperLanguage" list="whisperLanguages" value="auto" /></label>
+              <datalist id="whisperLanguages">
+                <option value="auto">Auto: follows language changes</option>
+                <option value="multilingual">Always split by language</option>
+                <option value="single">Lock the whole track to one language</option>
+                <option value="it,en">Italian + English only</option>
+                <option value="it">Italian</option><option value="en">English</option>
+                <option value="es">Spanish</option><option value="fr">French</option>
+                <option value="pt">Portuguese</option><option value="ja">Japanese</option>
+              </datalist>
+            </div>
+            <label class="toggle-row"><input id="vadFilter" type="checkbox" /><span><b>Speech VAD</b><small>Leave off for sung vocals</small></span></label>
+            <button class="button wide" id="transcribeButton" type="button">Transcribe song locally</button>
+            <div class="transcription-progress" id="transcriptionProgress" hidden>
+              <div><span id="transcriptionMessage">Preparing transcription…</span><output id="transcriptionPercent">0%</output></div>
+              <div class="transcription-track" role="progressbar" aria-label="Transcription progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="transcriptionProgressBar"></span></div>
+              <button class="button secondary wide" id="cancelTranscription" type="button">Stop transcription</button>
+            </div>
+            <p class="microcopy" id="transcriptionNote">Auto follows the song: it works out where the language changes, then re-reads every line to catch a switch mid-verse. Leave it on auto unless you want to force something. One code locks the whole track; <b>single</b> keeps it to one language. Processing stays local.</p>
+          </div>
+        </details>
+
+        <details open>
+          <summary data-section="sync" style="--section-tint: #ffc66d"><span class="section-mark" aria-hidden="true">◐</span><span class="section-name">Sync &amp; timing</span></summary>
+          <div class="section-body compact-fields">
+            <div class="sync-summary" id="syncSummary"><b>—</b><span>No audio analysis</span></div>
+            <div class="two-columns">
+              <button class="button wide" id="analyzeButton" type="button">Analyze audio</button>
+              <button class="button wide strong" id="autoAlignButton" type="button">Auto-align</button>
+            </div>
+            <label class="range-field"><span>Global offset <output id="timingOffsetOut">0 ms</output></span><input id="timingOffset" type="range" min="-600" max="600" step="5" value="0" /></label>
+            <label class="range-field"><span>Word lead <output id="wordLeadOut">60 ms</output></span><input id="wordLead" type="range" min="0" max="250" step="5" value="60" /></label>
+            <div class="two-columns">
+              <label class="field"><span>Snap window</span>
+                <select id="snapWindow">
+                  <option value="0.08">Tight · 80 ms</option>
+                  <option value="0.14" selected>Medium · 140 ms</option>
+                  <option value="0.24">Wide · 240 ms</option>
+                </select>
+              </label>
+              <label class="field"><span>Snap strength</span>
+                <select id="snapStrength">
+                  <option value="0.5">50%</option>
+                  <option value="0.85" selected>85%</option>
+                  <option value="1">100%</option>
+                </select>
+              </label>
+            </div>
+            <label class="toggle-row small"><input id="snapPhrasesToggle" type="checkbox" /><span><b>Snap phrases to beat</b><small>Align phrase starts to the BPM grid</small></span></label>
+            <p class="microcopy" id="alignNote">Auto-align finds constant latency and snaps each word to the nearest vocal onset.</p>
+          </div>
+        </details>
+
+        <details open>
+          <summary data-section="type" style="--section-tint: #ff3d7f"><span class="section-mark" aria-hidden="true">A</span><span class="section-name">Typography</span></summary>
+          <div class="section-body compact-fields">
+            <label class="field"><span>Text space</span>
+              <select id="textSpace">
+                <option value="flat">Flat: kinetic 2D presets</option>
+                <option value="scene">3D: volumetric letters in world space</option>
+              </select>
+            </label>
+            <label class="field"><span>Style preset</span>
+              <select id="stylePreset">
+                <option value="kinetic-slam">Kinetic Slam: high-impact words</option>
+                <option value="neon-flux">Neon Flux: blur-to-focus glow</option>
+                <option value="focus-word">Focus Word: one word at a time</option>
+                <option value="cascade">Cascade: stacked words</option>
+                <option value="wipe-fill">Wipe Fill: karaoke fill</option>
+                <option value="bold-stack">Bold Stack: poster</option>
+                <option value="minimal">Minimal Caption</option>
+              </select>
+            <p class="microcopy" id="presetHint"></p>
+            </label>
+            <div class="two-columns">
+              <label class="field"><span>Font character</span>
+                <select id="fontPreset">
+                  <option value="impact">Impact</option>
+                  <option value="condensed">Condensed</option>
+                  <option value="modern">Modern sans</option>
+                  <option value="serif">Editorial serif</option>
+                  <option value="mono">Monospace</option>
+                  <option value="bebas">Bebas: condensed display</option>
+                  <option value="geometric">Geometric: heavy poster</option>
+                  <option value="rounded">Rounded: soft geometric</option>
+                  <option value="poster">Poster: wide and bold</option>
+                  <option value="techno">Techno: condensed DIN</option>
+                  <option value="script">Script: hand-painted brush</option>
+                  <option value="jgothic">Japanese Gothic: kana-ready</option>
+                </select>
+              </label>
+              <div class="field"><span>Custom font</span>
+                <input class="visually-hidden" id="fontInput" type="file" accept=".ttf,.otf,.ttc" />
+                <button class="select-like" id="fontPick" type="button">Upload TTF/OTF</button>
+              </div>
+            </div>
+            <label class="range-field"><span>Type size <output id="fontSizeOut">160</output></span><input id="fontSize" type="range" min="40" max="280" value="160" /></label>
+            <label class="range-field"><span>Top line scale <output id="topScaleOut">58%</output></span><input id="topScale" type="range" min="35" max="100" value="58" /></label>
+            <label class="range-field"><span>Text width <output id="maxWidthOut">88%</output></span><input id="maxWidth" type="range" min="45" max="98" value="88" /></label>
+            <label class="range-field"><span>Vertical position <output id="positionYOut">52%</output></span><input id="positionY" type="range" min="12" max="88" value="52" /></label>
+            <div class="two-columns" id="text3dOffsetControls" hidden>
+              <label class="range-field"><span>3D horizontal offset <output id="offset3DXOut">0.0</output></span><input id="offset3DX" type="range" min="-12" max="12" step="0.25" value="0" /></label>
+              <label class="range-field"><span>3D vertical offset <output id="offset3DYOut">0.0</output></span><input id="offset3DY" type="range" min="-8" max="8" step="0.25" value="0" /></label>
+            </div>
+            <label class="range-field"><span>Line gap <output id="lineGapOut">-8</output></span><input id="lineGap" type="range" min="-30" max="70" value="-8" /></label>
+            <div class="color-row">
+              <label><span>Text</span><input id="textColor" type="color" value="#ffffff" /></label>
+              <label><span>Accent</span><input id="accentColor" type="color" value="#ff3d7f" /></label>
+              <label><span>Accent 2</span><input id="accentColor2" type="color" value="#8f5bff" /></label>
+              <label><span>Stroke</span><input id="strokeColor" type="color" value="#05040c" /></label>
+            </div>
+            <div class="two-columns">
+              <label class="field"><span>Motion intensity</span>
+                <select id="animationSelect">
+                  <option value="1.35">Extreme</option>
+                  <option value="1" selected>Standard</option>
+                  <option value="0.6">Subtle</option>
+                  <option value="0">Static</option>
+                </select>
+              </label>
+              <label class="toggle-row small"><input id="uppercaseToggle" type="checkbox" checked /><span><b>Uppercase</b></span></label>
+            </div>
+            <label class="toggle-row small"><input id="beatReactToggle" type="checkbox" checked /><span><b>Beat reaction</b><small>Pulse to the detected beat</small></span></label>
+            <label class="range-field"><span>Outline <output id="strokeWidthOut">3</output></span><input id="strokeWidth" type="range" min="0" max="14" value="3" /></label>
+            <label class="range-field"><span>Shadow <output id="shadowOut">7</output></span><input id="shadow" type="range" min="0" max="24" value="7" /></label>
+          </div>
+        </details>
+
+        <details>
+          <summary data-section="visual" style="--section-tint: #8f5bff"><span class="section-mark" aria-hidden="true">❋</span><span class="section-name">Visual dynamics</span></summary>
+          <div class="section-body compact-fields">
+            <label class="range-field"><span>Background shade <output id="shadeOut">28%</output></span><input id="shade" type="range" min="0" max="85" value="28" /></label>
+            <label class="range-field"><span>Visual intensity <output id="visualIntensityOut">90%</output></span><input id="visualIntensity" type="range" min="0" max="150" value="90" /></label>
+            <label class="range-field"><span>Film grain <output id="grainOut">14%</output></span><input id="grain" type="range" min="0" max="70" value="14" /></label>
+            <label class="range-field"><span>Background motion <output id="motionOut">0%</output></span><input id="motion" type="range" min="0" max="100" value="0" /></label>
+            <label class="range-field"><span>Image/video blur <output id="blurOut">0</output></span><input id="blur" type="range" min="0" max="30" value="0" /></label>
+            <div class="color-row two">
+              <label><span>Base</span><input id="backgroundColor" type="color" value="#080812" /></label>
+              <label><span>Secondary</span><input id="secondaryColor" type="color" value="#5cd7ff" /></label>
+            </div>
+          </div>
+        </details>
+
+        <details>
+          <summary data-section="export" style="--section-tint: #4de2ff"><span class="section-mark" aria-hidden="true">▤</span><span class="section-name">Canvas &amp; export</span></summary>
+          <div class="section-body compact-fields">
+            <label class="field"><span>Format</span>
+              <select id="aspectSelect">
+                <option value="16:9">16:9 landscape</option>
+                <option value="9:16">9:16 vertical</option>
+                <option value="1:1">1:1 square</option>
+              </select>
+            </label>
+            <div class="two-columns">
+              <label class="field"><span>Resolution</span>
+                <select id="resolutionSelect">
+                  <option value="720">720p</option>
+                  <option value="1080" selected>1080p</option>
+                  <option value="1440">1440p</option>
+                  <option value="2160">2160p / 4K</option>
+                </select>
+              </label>
+              <label class="field"><span>FPS</span>
+                <select id="fpsSelect"><option>24</option><option>25</option><option selected>30</option><option>50</option><option>60</option></select>
+              </label>
+            </div>
+            <label class="field"><span>Quality</span>
+              <select id="qualitySelect"><option value="18">High / CRF 18</option><option value="21">Balanced / CRF 21</option><option value="15">Very high / CRF 15</option></select>
+            </label>
+            <label class="toggle-row"><input id="safeAreaToggle" type="checkbox" /><span><b>Show title-safe guide</b></span></label>
+          </div>
+        </details>
+      </aside>
+
+      <section class="preview-column">
+        <div class="preview-toolbar">
+          <div><strong>Live preview</strong><span id="previewResolution">1920 × 1080 · 30 fps</span></div>
+          <div class="preview-tools">
+            <button class="icon-button" id="restartAnimation" title="Replay current lyric animation" type="button">↻</button>
+            <button class="icon-button" id="fullscreenButton" title="Fullscreen preview" type="button">⛶</button>
+          </div>
+        </div>
+
+        <div class="stage-shell" id="stageShell">
+          <div class="stage" id="stage">
+            <canvas id="visualCanvas"></canvas>
+            <canvas id="glCanvas" hidden></canvas>
+            <img id="backgroundImage" alt="" hidden />
+            <video id="backgroundVideo" muted loop playsinline hidden></video>
+            <div id="stageShade"></div>
+            <div id="stageTexture"></div>
+            <div class="safe-area" id="safeArea" hidden></div>
+            <div class="lyric-display" id="lyricDisplay" aria-live="off"></div>
+      <div class="no-audio-hint" id="noAudioHint">Add a song or scrub the timeline to preview</div>
+          </div>
+        </div>
+
+        <div class="transport">
+          <button class="play-button" id="playButton" type="button" aria-label="Play">▶</button>
+          <span class="timecode" id="currentTime">00:00.000</span>
+          <input class="seek" id="seekBar" type="range" min="0" max="8" step="0.001" value="0" />
+          <span class="timecode" id="durationTime">00:08.000</span>
+          <button class="mute-button" id="muteButton" type="button" aria-label="Mute">◕</button>
+          <input class="volume" id="volumeSlider" type="range" min="0" max="1" step="0.01" value="0.9" />
+          <audio id="audioPlayer" preload="metadata"></audio>
+        </div>
+
+        <div class="preview-footer">
+          <span id="currentCueLabel">Cue 1 · 0.00–2.60</span>
+          <span id="autosaveStatus">Autosaved locally</span>
+        </div>
+      </section>
+
+      <aside class="panel timeline-panel">
+        <div class="panel-title timeline-title">
+          <div><h2 id="cuePanelTitle">Lyrics</h2><span id="cueCount">3 cues</span></div>
+          <button class="icon-button" id="addCueButton" type="button" title="Add cue">＋</button>
+        </div>
+
+        <div class="bulk-box">
+          <label for="bulkLyrics" id="bulkLyricsLabel">Paste or OCR text</label>
+          <textarea id="bulkLyrics" rows="5" placeholder="One lyric cue per line…"></textarea>
+          <div class="bulk-actions">
+            <button type="button" id="appendBulkButton">Append</button>
+            <button type="button" class="strong" id="replaceBulkButton">Auto-time & replace</button>
+          </div>
+        </div>
+
+        <div class="timeline-tools">
+          <button type="button" id="sortCuesButton">Sort</button>
+          <button type="button" id="nudgeBackButton">−0.1s</button>
+          <button type="button" id="nudgeForwardButton">+0.1s</button>
+          <select id="exportFormat" title="Subtitle format">
+            <option value="srt">SRT</option>
+            <option value="vtt">WebVTT</option>
+            <option value="ass">ASS karaoke</option>
+            <option value="elrc">Word-level LRC</option>
+            <option value="lrc">LRC</option>
+          </select>
+          <button type="button" id="exportSrtButton">Export</button>
+        </div>
+
+        <div class="cue-list" id="cueList"></div>
+
+        <div class="project-actions">
+          <input class="visually-hidden" id="projectInput" type="file" accept=".json,.phrasync,.verseframe" />
+          <button type="button" id="loadProjectButton">Load project</button>
+          <button type="button" id="saveProjectButton">Save project</button>
+          <button type="button" id="resetProjectButton" class="danger-text">Reset</button>
+        </div>
+      </aside>
+    </main>
+
+    <section class="timeline-dock" id="timelineDock">
+      <div class="dock-grip" id="dockGrip" title="Drag to resize"></div>
+      <div class="dock-head">
+        <div class="dock-title">
+          <strong>Timeline</strong>
+          <span id="timelineMeta">no audio</span>
+        </div>
+        <div class="dock-tools">
+          <div class="segmented tiny" id="snapMode">
+            <button type="button" data-value="onset" class="active" title="Snap to vocal onsets">Onset</button>
+            <button type="button" data-value="beat" title="Snap to the BPM grid">Beat</button>
+            <button type="button" data-value="off" title="Disable snapping">Free</button>
+          </div>
+          <button class="icon-button" id="zoomOutButton" type="button" title="Zoom out (Ctrl+rotella)">−</button>
+          <button class="icon-button" id="zoomInButton" type="button" title="Zoom in (Ctrl+rotella)">＋</button>
+          <button class="icon-button" id="zoomFitButton" type="button" title="Show the entire song">⤢</button>
+          <button class="chip" id="followToggle" type="button" title="Follow playback"><i></i><span>Follow</span></button>
+          <span class="dock-hint">drag = move · edges = duration · Shift = ripple · Alt = no snap</span>
+        </div>
+      </div>
+      <div class="timeline-canvas-wrap" id="timelineWrap"><canvas id="timelineCanvas"></canvas></div>
+      <div class="dock-foot">
+        <div class="word-nudge">
+          <span id="selectedWordLabel">no word selected</span>
+          <button type="button" id="wordBack" title="Move word back 20 ms">−20ms</button>
+          <button type="button" id="wordForward" title="Move word forward 20 ms">+20ms</button>
+          <button type="button" id="tapSyncButton" class="strong" title="Press T in time with each sung word">Tap sync (T)</button>
+          <button type="button" id="splitCueButton" title="Split the phrase at the playhead">Split</button>
+          <button type="button" id="clearWordsButton" title="Recalculate word timing from the phrase">Reset words</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <dialog id="reportDialog" class="modal report-modal">
+    <form method="dialog" class="modal-card">
+      <header><div><span class="eyebrow">GAUNTLET CRITIC</span><h2 id="reportTitle">Quality report</h2></div><button class="icon-button" value="cancel" aria-label="Close">×</button></header>
+      <div class="score-wrap"><div class="score-ring" id="scoreRing"><strong id="scoreValue">—</strong><span>/100</span></div><p id="reportSummary">Running checks…</p></div>
+      <div class="report-list" id="reportList"></div>
+      <details class="checks-details"><summary>Checks performed</summary><ul id="checksList"></ul></details>
+      <footer><button class="button secondary" value="cancel">Close</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="settingsDialog" class="modal settings-modal">
+    <form method="dialog" class="modal-card">
+      <header><div><span class="eyebrow">LOCAL SETTINGS</span><h2>Integrations</h2></div><button class="icon-button" value="cancel" aria-label="Close">×</button></header>
+      <div class="settings-content">
+        <section class="integration-card">
+          <div class="integration-heading">
+            <div><strong>Hugging Face</strong><span id="hfTokenStatus">Not configured</span></div>
+            <span class="integration-badge">Whisper models</span>
+          </div>
+          <p>Optional token for gated or rate-limited model downloads. It stays on this computer and is never added to projects or exports.</p>
+          <label class="settings-field"><span>Access token</span><div class="secret-input"><input id="hfTokenInput" type="password" autocomplete="off" spellcheck="false" placeholder="hf_…" /><button id="hfTokenReveal" type="button" aria-label="Show or hide token">Show</button></div></label>
+          <small>Create a read-only token in <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer">Hugging Face token settings</a>.</small>
+          <div class="settings-actions"><button class="button secondary danger-text" id="hfTokenRemove" type="button">Remove saved token</button><button class="button primary" id="hfTokenSave" type="button">Save token</button></div>
+        </section>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="renderDialog" class="modal render-modal">
+    <div class="modal-card">
+      <header><div><span class="eyebrow">LOCAL RENDER</span><h2 id="renderTitle">Building your lyric video</h2></div><button class="icon-button" id="renderClose" aria-label="Close">×</button></header>
+      <div class="render-visual"><div class="render-pulse"></div><strong id="renderPercent">0%</strong></div>
+      <div class="progress-track"><span id="renderProgress"></span></div>
+      <p id="renderMessage">Preparing critic pass…</p>
+      <div class="render-result" id="renderResult" hidden>
+        <strong>MP4 is ready.</strong><span id="renderMeta"></span>
+        <a class="button primary" id="downloadRender" href="#">Download MP4</a>
+      </div>
+      <div class="render-error" id="renderError" hidden></div>
+      <footer><button class="button secondary" id="cancelRender" type="button">Cancel render</button></footer>
+    </div>
+  </dialog>
+
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+  <script src="/static/kinetic.js" defer></script>
+  <script src="/static/scene3d.js" defer></script>
+  <script src="/static/scene3d-draw.js" defer></script>
+  <script type="module" src="/static/scene3d-gl.js"></script>
+  <script src="/static/timeline.js" defer></script>
+  <script src="/static/app-state.js" defer></script>
+  <script src="/static/app-modes.js" defer></script>
+  <script src="/static/app-ui.js" defer></script>
+  <script src="/static/app-lyrics.js" defer></script>
+  <script src="/static/app-visuals.js" defer></script>
+  <script src="/static/app-cues.js" defer></script>
+  <script src="/static/app-workflows.js" defer></script>
+  <script src="/static/app-timeline.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

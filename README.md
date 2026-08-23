@@ -11,9 +11,7 @@
 > [!IMPORTANT]
 > Phrasync v0.1.0 is an experimental first release. Expect rough edges, evolving workflows, and breaking changes.
 
-<p align="center">
-  <a href="docs/media/phrasync-demo.mp4"><strong>▶ Watch the high-quality Phrasync demo</strong></a>
-</p>
+https://github.com/user-attachments/assets/ecb3add8-0612-4bf0-b250-f47066977301
 
 Phrasync has two focused workflows. **Lyric Video** turns a song into beat-aware kinetic typography. **Subtitles** takes an audio or video source, transcribes speech locally, lets you correct every cue, and can burn the result directly into an MP4. Both live in the same local editor, with word-level timing, subtitle-file export, live preview, and no cloud upload.
 

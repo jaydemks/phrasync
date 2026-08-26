@@ -25,7 +25,7 @@
 
 ## Verification performed
 
-The automated test suite was run successfully in the delivery environment: **50 tests passed**. This includes hierarchical language mapping, per-span and per-phrase decoding, restricted and fixed language modes, Japanese cue composition, the transcription gauntlet, alignment-boundary regressions, real FFmpeg render tests, a video-source subtitle export, JavaScript/Python kinetic parity, English-copy coverage, and a Chrome 3D/environment matrix with zero captured browser exceptions. Windows is physically tested; Linux and macOS launchers remain source-level cross-platform support rather than separately signed native installers.
+The automated test suite was run successfully in the delivery environment: **52 tests passed**. This includes hierarchical language mapping, per-span and per-phrase decoding, restricted and fixed language modes, Japanese cue composition, the transcription gauntlet, alignment-boundary regressions, real FFmpeg and WebGL render tests, a video-source subtitle export, JavaScript/Python kinetic parity, English-copy coverage, and a Chrome 3D/environment matrix with zero captured browser exceptions. Windows is physically tested; Linux and macOS launchers remain source-level cross-platform support rather than separately signed native installers.
 
 ## Architecture notes
 

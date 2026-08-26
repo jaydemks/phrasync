@@ -1,3 +1,35 @@
+# Phrasync v0.1.1
+
+Released 2026-08-27.
+
+This patch removes the final-export limitation for Odyssey and world-space typography.
+
+## Highlights
+
+- Odyssey 3D MP4 export now uses the same Three.js/WebGL scene engine as the live preview instead of being blocked by preflight.
+- World-space 3D typography exports as real volumetric WebGL geometry over Odyssey, built-in dynamic visuals, images, and videos.
+- Flat kinetic typography over Odyssey keeps the WebGL environment and is composited during the final H.264 pass.
+- Chrome or Edge runs headlessly for deterministic frame generation; WebCodecs produces H.264 and FFmpeg muxes the original audio into the final MP4.
+- Odyssey Flat retains a deterministic CPU raster export path for systems and projects that do not need the WebGL scene.
+- The critic now reports the selected WebGL export path as an informational note instead of raising the former preview-only blocking errors.
+- Added an explicit `websockets` runtime dependency for the local Chrome DevTools connection.
+
+## Verified for this release
+
+- Real MP4 smoke renders pass for Odyssey 3D with 3D text, Odyssey 3D with flat text, and Aurora with 3D text.
+- Every smoke output decodes successfully through FFmpeg.
+- The complete suite reports **52 passing tests**.
+- The updated server was verified on Windows 11 with OCR, Faster-Whisper, and CUDA still available after restart.
+
+## Current limits
+
+- WebGL MP4 export requires a local Chrome or Edge installation with WebCodecs support.
+- Long high-resolution WebGL exports can use substantial browser memory while the encoded H.264 stream is assembled.
+- Odyssey Flat is a CPU raster interpretation; choose Odyssey 3D when preview-faithful lighting and geometry are required.
+- Linux and macOS launchers remain source-level supported but were not physically verified for this patch.
+
+---
+
 # Phrasync v0.1.0
 
 This is the first public release: useful today, intentionally honest about what still needs engineering.

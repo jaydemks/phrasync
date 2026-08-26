@@ -14,6 +14,7 @@ function initParticles(width, height) {
   }));
 }
 function audioAmplitude() {
+  if (Number.isFinite(window.__vfExportAmplitude)) return window.__vfExportAmplitude;
   if (!analyser || !frequencyData) return .18 + .08 * Math.sin(performance.now() / 350);
   analyser.getByteFrequencyData(frequencyData);
   let sum = 0;
@@ -258,6 +259,10 @@ function prepareWebGLOverlay(time) {
 }
 
 function animationLoop(now) {
+  if (window.__vfExportMode) {
+    requestAnimationFrame(animationLoop);
+    return;
+  }
   if (virtualPlaying) {
     const time = currentPlaybackTime();
     if (time >= projectDuration()) {
@@ -298,3 +303,98 @@ function animationLoop(now) {
   timeline?.tick();
   requestAnimationFrame(animationLoop);
 }
+
+/** Deterministic frame hook used by the local MP4 WebGL renderer. */
+window.VFExport = {
+  async prepare(width, height, exportProject) {
+    window.__vfExportMode = true;
+    virtualPlaying = false;
+    virtualTime = 0;
+    if (!els.audioPlayer.paused) els.audioPlayer.pause();
+    project = migrateProject(exportProject);
+    // The server muxes the original audio after the WebGL video pass. Keeping
+    // the browser audio detached makes currentPlaybackTime deterministic.
+    project.audio = null;
+    els.audioPlayer.removeAttribute("src");
+    Object.assign(els.stage.style, {
+      position: "fixed", inset: "0", width: `${width}px`, height: `${height}px`,
+      maxWidth: "none", maxHeight: "none", transform: "none"
+    });
+    Object.assign(els.stageShell.style, {
+      position: "fixed", inset: "0", width: `${width}px`, height: `${height}px`,
+      padding: "0", margin: "0", border: "0", transform: "none"
+    });
+    document.body.style.margin = "0";
+    this.output = document.createElement("canvas");
+    this.output.width = width;
+    this.output.height = height;
+    renderLyric(true);
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    return Boolean(window.VFSceneGL?.ready);
+  },
+
+  async renderFrame(time, amplitude = 0) {
+    virtualTime = Number(time) || 0;
+    window.__vfExportAmplitude = Number(amplitude) || 0;
+    const lyricT = lyricTime(virtualTime);
+    const bg = project.background;
+    const timing = project.timing || {};
+    const beat = project.style.beatReact
+      ? K().beatPulse(lyricT, Number(timing.bpm) || 0, Number(timing.beatOffset) || 0)
+      : 0;
+    const pulse = Math.max(beat, (Number(amplitude) || 0) * 0.8);
+    const world = bg.type === "dynamic" && bg.visual === "scene3d";
+    let scene;
+    if (world) scene = drawSceneGL(lyricT, bg, pulse, bg.visualIntensity);
+    else if (bg.type === "dynamic") scene = drawDynamicVisual(virtualTime * 1000);
+    else scene = prepareWebGLOverlay(lyricT);
+    // setLyric intentionally creates only four slabs per UI frame. During an
+    // offline export we can finish the current phrase before encoding it.
+    renderLyric(false);
+    for (let pass = 0; pass < 12; pass += 1) updateLyricFrame(lyricT);
+    scene?.render();
+    if (world) return { width: els.glCanvas.width, height: els.glCanvas.height };
+
+    const canvas = this.output;
+    const ctx = canvas.getContext("2d", { alpha: false });
+    ctx.fillStyle = bg.backgroundColor || "#080812";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const cover = source => {
+      if (!source?.naturalWidth && !source?.videoWidth) return;
+      const sw = source.naturalWidth || source.videoWidth;
+      const sh = source.naturalHeight || source.videoHeight;
+      const scale = Math.max(canvas.width / sw, canvas.height / sh);
+      const dw = sw * scale, dh = sh * scale;
+      ctx.drawImage(source, (canvas.width - dw) / 2, (canvas.height - dh) / 2, dw, dh);
+    };
+    if (bg.type === "dynamic") ctx.drawImage(els.visualCanvas, 0, 0, canvas.width, canvas.height);
+    else if (bg.type === "image") cover(els.backgroundImage);
+    else if (bg.type === "video") {
+      const video = els.backgroundVideo;
+      if (Number.isFinite(video.duration) && video.duration > 0) {
+        const target = virtualTime % video.duration;
+        if (Math.abs(video.currentTime - target) > 0.002) {
+          await new Promise(resolve => {
+            const done = () => resolve();
+            video.addEventListener("seeked", done, { once: true });
+            video.currentTime = target;
+            setTimeout(done, 250);
+          });
+        }
+      }
+      cover(video);
+    }
+    const shade = Math.max(0, Math.min(0.92, Number(bg.shade) || 0));
+    if (shade) {
+      ctx.fillStyle = `rgba(0,0,0,${shade})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    ctx.drawImage(els.glCanvas, 0, 0, canvas.width, canvas.height);
+    return { width: canvas.width, height: canvas.height };
+  },
+
+  canvas() {
+    const bg = project.background;
+    return bg.type === "dynamic" && bg.visual === "scene3d" ? els.glCanvas : this.output;
+  }
+};

@@ -69,18 +69,30 @@ def test_preflight_rejects_video_source_without_audio(tmp_path):
         delete_asset(asset.id)
 
 
-def test_preflight_blocks_preview_only_3d_export_modes():
+def test_preflight_allows_rasterized_3d_export_modes():
     project = base_project()
     project["background"].update({"visual": "scene3d", "textSpace": "scene"})
     report = preflight_project(project)
-    assert not report.ok
+    assert report.ok
     codes = {issue.code for issue in report.issues}
-    assert "odyssey_export_unsupported" in codes
-    assert "text3d_export_unsupported" in codes
+    assert "odyssey_webgl_export" in codes
+    assert "text3d_webgl_export" in codes
+    assert "odyssey_export_rasterized" not in codes
 
 
-def test_preflight_blocks_flat_odyssey_export_until_renderer_has_parity():
+def test_preflight_allows_flat_odyssey_export():
     project = base_project()
     project["background"].update({"visual": "scene", "textSpace": "flat"})
     report = preflight_project(project)
-    assert "odyssey_export_unsupported" in {issue.code for issue in report.issues}
+    assert report.ok
+    assert "odyssey_export_rasterized" in {issue.code for issue in report.issues}
+
+
+def test_preflight_uses_webgl_for_3d_text_over_other_backgrounds():
+    project = base_project()
+    project["background"].update({"visual": "aurora", "textSpace": "scene"})
+    report = preflight_project(project)
+    assert report.ok
+    codes = {issue.code for issue in report.issues}
+    assert "text3d_webgl_export" in codes
+    assert "text3d_export_flattened" not in codes

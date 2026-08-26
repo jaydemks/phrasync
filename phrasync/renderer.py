@@ -18,6 +18,7 @@ from .render_backgrounds import DynamicBackground
 from .render_typography import render_text_layer
 from .render_utils import apply_dim, cover, scale_for_canvas
 from .subtitles import normalize_cues
+from .webgl_renderer import render_webgl_video
 
 ProgressCallback = Callable[[float, str], None]
 
@@ -253,6 +254,114 @@ def render_project(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = output_path.with_suffix(".partial.mp4")
     temporary.unlink(missing_ok=True)
+
+    background = project.get("background") or {}
+    exact_webgl = (
+        background.get("textSpace", "flat") == "scene"
+        or (background.get("type") == "dynamic" and background.get("visual") == "scene3d")
+    )
+    if exact_webgl:
+        encoded = output_path.with_suffix(".partial.h264")
+        try:
+            render_webgl_video(
+                project,
+                encoded,
+                width=ctx.width,
+                height=ctx.height,
+                fps=ctx.fps,
+                frame_count=ctx.frame_count,
+                envelope=ctx.envelope.astype(float).tolist(),
+                progress=progress,
+                cancel_check=cancel_check,
+            )
+            flat_over_webgl = background.get("textSpace", "flat") != "scene"
+            if flat_over_webgl:
+                decoder = subprocess.Popen(
+                    [ffmpeg_exe(), "-v", "error", "-r", str(ctx.fps), "-f", "h264",
+                     "-i", str(encoded), "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                )
+                command = [
+                    ffmpeg_exe(), "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+                    "-s:v", f"{ctx.width}x{ctx.height}", "-r", str(ctx.fps), "-i", "pipe:0",
+                ]
+                if ctx.audio:
+                    command.extend(["-i", ctx.audio.path])
+                command.extend(["-map", "0:v:0"])
+                if ctx.audio:
+                    command.extend(["-map", "1:a:0", "-c:a", "aac", "-b:a", "192k"])
+                command.extend([
+                    "-c:v", "libx264", "-preset", str(project.get("export", {}).get("preset", "medium")),
+                    "-crf", str(project.get("export", {}).get("crf", 18)), "-pix_fmt", "yuv420p",
+                    "-t", f"{ctx.duration:.6f}", "-movflags", "+faststart", str(temporary),
+                ])
+                encoder = subprocess.Popen(
+                    command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+                )
+                assert decoder.stdout is not None and encoder.stdin is not None
+                frame_size = ctx.width * ctx.height * 3
+                for frame_index in range(ctx.frame_count):
+                    chunks = bytearray()
+                    while len(chunks) < frame_size:
+                        chunk = decoder.stdout.read(frame_size - len(chunks))
+                        if not chunk:
+                            break
+                        chunks.extend(chunk)
+                    raw = bytes(chunks)
+                    if len(raw) != frame_size:
+                        details = decoder.stderr.read().decode("utf-8", errors="replace") if decoder.stderr else ""
+                        raise RuntimeError(f"WebGL frame decoder stopped early: {details}")
+                    frame = Image.frombytes("RGB", (ctx.width, ctx.height), raw)
+                    lyric = render_text_layer(ctx, frame_index / ctx.fps)
+                    if lyric is not None:
+                        frame = Image.alpha_composite(frame.convert("RGBA"), lyric).convert("RGB")
+                    encoder.stdin.write(frame.tobytes())
+                    if progress and frame_index % max(1, ctx.frame_count // 100) == 0:
+                        progress(0.89 + 0.09 * frame_index / ctx.frame_count, "Compositing flat lyrics")
+                encoder.stdin.close()
+                encode_error = encoder.stderr.read().decode("utf-8", errors="replace") if encoder.stderr else ""
+                encode_code = encoder.wait()
+                decoder.stdout.close()
+                decode_error = decoder.stderr.read().decode("utf-8", errors="replace") if decoder.stderr else ""
+                decode_code = decoder.wait()
+                if encode_code != 0 or decode_code != 0:
+                    raise RuntimeError(
+                        f"WebGL composition failed: {encode_error or decode_error or 'unknown error'}"
+                    )
+            else:
+                command = [
+                    ffmpeg_exe(), "-y", "-v", "error", "-r", str(ctx.fps),
+                    "-f", "h264", "-i", str(encoded),
+                ]
+                if ctx.audio:
+                    command.extend(["-i", ctx.audio.path])
+                command.extend(["-map", "0:v:0"])
+                if ctx.audio:
+                    command.extend(["-map", "1:a:0", "-c:a", "aac", "-b:a", "192k"])
+                command.extend([
+                    "-c:v", "copy", "-t", f"{ctx.duration:.6f}",
+                    "-movflags", "+faststart", str(temporary),
+                ])
+                if progress:
+                    progress(0.90, "Muxing WebGL video and audio")
+                completed = subprocess.run(command, capture_output=True, text=True)
+                if completed.returncode != 0:
+                    raise RuntimeError(
+                        f"FFmpeg WebGL mux failed: {completed.stderr.strip() or 'unknown error'}"
+                    )
+            temporary.replace(output_path)
+            if progress:
+                progress(1.0, "Render complete")
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise
+        finally:
+            encoded.unlink(missing_ok=True)
+        return {
+            "path": str(output_path), "duration": ctx.duration, "frames": ctx.frame_count,
+            "width": ctx.width, "height": ctx.height, "fps": ctx.fps,
+            "elapsed": round(time.monotonic() - started, 3), "engine": "webgl",
+        }
 
     composer = FrameComposer(ctx)
 

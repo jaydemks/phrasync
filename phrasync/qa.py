@@ -213,11 +213,18 @@ def preflight_project(project: dict[str, Any]) -> CriticReport:
         report.add("error", "background_type", f"Unknown background type: {background_type}")
     if background_type == "dynamic":
         visual = background.get("visual", "aurora")
-        if visual in {"scene", "scene3d"}:
+        text_space = background.get("textSpace", "flat")
+        if visual == "scene3d":
             report.add(
-                "error",
-                "odyssey_export_unsupported",
-                "Odyssey scenes are currently preview-only. Choose Aurora, Particles, Equalizer, or Grid before MP4 export.",
+                "note",
+                "odyssey_webgl_export",
+                "Odyssey will be rendered by the WebGL scene engine for MP4 export.",
+            )
+        elif visual == "scene":
+            report.add(
+                "note",
+                "odyssey_export_rasterized",
+                "Odyssey will be rasterized for MP4 export; WebGL lighting may differ slightly from the live preview.",
             )
         elif visual not in {"aurora", "particles", "equalizer", "grid"}:
             report.add("error", "dynamic_visual", f"Unknown dynamic visual: {visual}")
@@ -225,9 +232,9 @@ def preflight_project(project: dict[str, Any]) -> CriticReport:
             report.add("note", "equalizer_without_audio", "Equalizer will animate gently because no audio is attached.")
     if background.get("textSpace", "flat") == "scene":
         report.add(
-            "error",
-            "text3d_export_unsupported",
-            "3D lyric space is currently preview-only. Switch text space to Flat before MP4 export.",
+            "note",
+            "text3d_webgl_export",
+            "World-space 3D typography will be rendered by WebGL for MP4 export.",
         )
     report.checks.append("Background asset and dynamic visual logic")
 

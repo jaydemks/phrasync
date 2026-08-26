@@ -306,10 +306,12 @@ async function startRender() {
   resetRenderModal();
   if (!els.renderDialog.open) els.renderDialog.showModal();
   try {
+    const exportProject = clone(project);
+    exportProject.__renderOrigin = window.location.origin;
     const response = await api("/api/render", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: project.title, project })
+      body: JSON.stringify({ title: project.title, project: exportProject })
     });
     currentRenderJob = response.id;
     pollRender();

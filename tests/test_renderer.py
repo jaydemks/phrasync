@@ -105,6 +105,24 @@ def test_render_dynamic_mp4(tmp_path):
         delete_asset(asset.id)
 
 
+def test_render_flat_odyssey_mp4(tmp_path):
+    visual = "scene"
+    output = tmp_path / f"{visual}.mp4"
+    project = make_project(
+        duration=0.25,
+        background={
+            "type": "dynamic", "visual": visual, "textSpace": "flat",
+            "sceneKit": "japan", "sceneDirection": "forward",
+            "sceneSpeed": 1, "sceneDensity": 1, "sceneSeed": 1337,
+            "weather": "rain", "daytime": "sunset", "season": "summer",
+        },
+    )
+    result = render_project(project, output)
+    assert result["frames"] == 14
+    assert output.exists()
+    assert decode_test(output)[0]
+
+
 @pytest.mark.parametrize("background_kind", ["image", "video"])
 def test_render_media_backgrounds_without_audio(tmp_path, background_kind):
     source = tmp_path / ("background.png" if background_kind == "image" else "background.mp4")

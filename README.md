@@ -9,7 +9,7 @@
 <p align="center">Created by <strong>jaydemks</strong>.</p>
 
 > [!IMPORTANT]
-> Phrasync v0.1.0 is an experimental first release. Expect rough edges, evolving workflows, and breaking changes.
+> Phrasync v0.1.1 is an experimental release. Expect rough edges, evolving workflows, and breaking changes.
 
 https://github.com/user-attachments/assets/ecb3add8-0612-4bf0-b250-f47066977301
 
@@ -49,7 +49,7 @@ The strongest parts today are:
 
 The first release keeps the runtime small and vendors only Three.js for Odyssey. Its existing scene graph, fog, lighting, points, and line primitives are enough for deterministic rain, snow, storms, leaves, seasonal colour and time-of-day transitions. The official [Three.js Sky addon](https://threejs.org/docs/pages/Sky.html) remains an option for more physically based atmospheric scattering later.
 
-Three open-source projects were evaluated but are not bundled in v0.1.0:
+Three open-source projects were evaluated but are not bundled in v0.1.1:
 
 - [Troika Three Text](https://github.com/protectwise/troika/tree/main/packages/troika-three-text) is the strongest next step for high-quality SDF text, kerning, joined scripts, bidirectional layout, and broad Unicode fallback in 3D.
 - [JASSUB](https://github.com/ThaUnknown/jassub) and its underlying [libass](https://github.com/libass/libass) are the serious route to pixel-faithful ASS subtitle preview in the browser.
@@ -139,7 +139,7 @@ A representative 2-second export at 1920×1080, 30 fps, H.264 CRF 18/`medium`, w
 2. Import lyrics, run OCR, transcribe locally, or type the words.
 3. Run audio analysis and **Auto-align**, then review phrase and word timing.
 4. Pick a kinetic 2D look or a grounded 3D personality, then choose the background and art direction.
-5. Run **Critic check** and render a supported 2D MP4, or export timed SRT/VTT/ASS/LRC data.
+5. Run **Critic check** and render an MP4, or export timed SRT/VTT/ASS/LRC data.
 
 ### Subtitles
 
@@ -172,7 +172,7 @@ The current automated and browser checks cover:
 - 3D fly-past lifecycle at 20%, 100%, and 260% speed;
 - weather, daytime, season, automatic environment changes, and dedicated 3D preset presentation.
 
-The current environment reports **50 passing automated tests**. The hierarchical language mapper, per-span and per-phrase decoding, fixed and restricted language modes, Japanese cue composition, transcription gauntlet, alignment boundaries, export, API, timing, QA, server, settings, subtitle, project-mode, English-copy, and frontend checks pass. The Chrome gauntlet reports zero browser exceptions across its 3D combination matrix.
+The current environment reports **52 passing automated tests**. The hierarchical language mapper, per-span and per-phrase decoding, fixed and restricted language modes, Japanese cue composition, transcription gauntlet, alignment boundaries, WebGL and CPU export, API, timing, QA, server, settings, subtitle, project-mode, English-copy, and frontend checks pass. The Chrome gauntlet reports zero browser exceptions across its 3D combination matrix.
 
 The engineering export paths have been verified with short renders, but a complete song-length lyric video has not been exported yet. Full output videos are planned using the same songs shown in the app demo, alongside their future Spotify releases.
 
@@ -201,7 +201,7 @@ Preview timing in `static/kinetic.js` and export timing in `phrasync/kinetic.py`
 - Automatic language mapping and phrase-level verification improve code-switching material, but expressive singing, unusual pronunciation, heavy effects, and closely related languages can still require human review.
 - The included looks are useful, but the output needs more art direction, presets, and per-element control.
 - Rendering is CPU-heavy and can be slow for long 1080p/4K projects.
-- Odyssey Flat, Odyssey 3D, and 3D text are currently live-preview features. The preflight blocks them for MP4 instead of silently producing an output that differs from the preview. Switch to a supported dynamic background and Flat text for final MP4 rendering.
+- Odyssey 3D and world-space 3D typography export through the same WebGL scene engine used by the live preview, encoded locally through Chrome/Edge WebCodecs and muxed to MP4 by FFmpeg. Flat typography over Odyssey is composited after the WebGL pass; Odyssey Flat keeps its deterministic CPU raster path.
 - No complete song-length output video has been produced yet; current export validation uses shorter technical renders.
 - Project JSON references local assets instead of creating one portable archive.
 - Browser video preview intentionally accepts MP4 and WebM. Convert MOV, MKV, AVI, and unusual codecs first; FFmpeg support alone does not guarantee that Chrome can decode the preview.

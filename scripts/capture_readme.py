@@ -1,4 +1,4 @@
-"""Capture the four README screenshots from a running local Phrasync instance."""
+"""Capture README screenshots from a running local Phrasync instance."""
 
 from __future__ import annotations
 
@@ -115,6 +115,10 @@ def main() -> None:
             time.sleep(2.0)
             if not devtools.evaluate("Boolean(document.querySelector('#stage'))"):
                 raise RuntimeError("Phrasync did not load")
+            if devtools.evaluate("Boolean(document.querySelector('#onboardingDialog')?.open)"):
+                devtools.screenshot(args.out / "first-run.png", "#onboardingDialog .modal-card")
+                devtools.evaluate("document.querySelector('#onboardingContinue').click()")
+                time.sleep(0.2)
             devtools.screenshot(args.out / "editor-overview.png")
             devtools.screenshot(args.out / "kinetic-preview.png", "#stageShell")
             devtools.screenshot(args.out / "timeline-editor.png", "#timelineDock")

@@ -12,7 +12,7 @@ function bindControls() {
     timeline?.refreshTheme();
   });
   els.criticButton.addEventListener("click", runCritic);
-  els.renderButton.addEventListener("click", startRender);
+  els.renderButton.addEventListener("click", openRenderDialog);
   els.audioPick.addEventListener("click", () => els.audioInput.click());
   els.audioInput.addEventListener("change", () => handleAudioFile(els.audioInput.files[0]));
   els.backgroundPick.addEventListener("click", () => els.backgroundInput.click());
@@ -37,6 +37,9 @@ function bindControls() {
   const sceneBindings = [
     [els.sceneKit, "sceneKit", value => value],
     [els.sceneDirection, "sceneDirection", value => value],
+    [els.sceneArtStyle, "artStyle", value => value],
+    [els.secondaryMotion, "secondaryMotion", value => value],
+    [els.motionAmount, "motionAmount", value => Number(value) / 100],
     [els.textSpace, "textSpace", value => value],
     [els.environmentMode, "environmentMode", value => value],
     [els.weather, "weather", value => value],
@@ -59,6 +62,7 @@ function bindControls() {
   }
   els.textSpace.addEventListener("change", () => {
     project.background.textSpace = els.textSpace.value;
+    applyTextOrientation();
     updatePresetPresentation(); restartLyricAnimation(); scheduleSave();
   });
   els.sceneBeat.addEventListener("change", () => {
@@ -240,9 +244,14 @@ function bindControls() {
   });
 
   els.renderClose.addEventListener("click", () => els.renderDialog.close());
+  els.chooseRenderDirectory.addEventListener("click", chooseRenderDirectory);
+  els.openRenderDirectory.addEventListener("click", openRenderDirectory);
+  els.openDefaultRenderDirectory.addEventListener("click", openDefaultRenderDirectory);
+  els.confirmRender.addEventListener("click", startRender);
+  els.downloadRender.addEventListener("click", downloadRender);
   els.cancelRender.addEventListener("click", cancelRender);
   window.addEventListener("keydown", event => {
-    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); startRender(); }
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); openRenderDialog(); }
     if (event.target.matches("input,textarea,select")) return;
     if (event.code === "Space" && !event.target.matches("button")) { event.preventDefault(); togglePlay(); }
     // Tap sync only listens once it is armed, so T stays free otherwise.
@@ -332,9 +341,12 @@ async function removeHfToken() {
 }
 
 function init() {
+  initI18n();
   initTheme();
   setupTimeline();
   bindControls();
+  initOceanControls();
+  initTextOrientation();
   applyProjectToControls();
   els.audioPlayer.volume = Number(els.volumeSlider.value);
   updateRangeUI(els.volumeSlider);
@@ -348,8 +360,14 @@ function init() {
     els.hfTokenReveal.textContent = reveal ? "Hide" : "Show";
   });
   els.shutdownButton.addEventListener("click", shutdownServer);
+  document.addEventListener("phrasync-language-change", () => {
+    applyModeUI();
+    checkHealth();
+    if (currentTranscriptionJob) pollTranscription();
+  });
   if (project.audioAssetId) ensureAnalysis();
   requestAnimationFrame(animationLoop);
+  window.PhrasyncDiagnostics?.record("info", "frontend", "Editor controls initialized");
 }
 
 init();

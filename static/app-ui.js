@@ -8,10 +8,17 @@ function toast(message, type = "") {
   setTimeout(() => node.remove(), 4300);
 }
 async function api(path, options = {}) {
-  const response = await fetch(path, options);
+  let response;
+  try {
+    response = await fetch(path, options);
+  } catch (error) {
+    window.PhrasyncDiagnostics?.record("error", "api", `${options.method || "GET"} ${path} network failure: ${error.name}`);
+    throw error;
+  }
   const contentType = response.headers.get("content-type") || "";
   const data = contentType.includes("application/json") ? await response.json() : await response.text();
   if (!response.ok) {
+    window.PhrasyncDiagnostics?.record("error", "api", `${options.method || "GET"} ${path} returned ${response.status}`);
     const detail = typeof data === "object" ? data.detail || JSON.stringify(data) : data;
     throw new Error(detail || `${response.status} ${response.statusText}`);
   }
@@ -19,9 +26,28 @@ async function api(path, options = {}) {
 }
 
 async function uploadAsset(kind, file) {
-  const body = new FormData();
-  body.append("file", file);
-  return api(`/api/assets/${kind}`, { method: "POST", body });
+  // Send the File directly: multipart would spool and copy a long video twice.
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `/api/assets/${kind}/stream?filename=${encodeURIComponent(file.name)}`);
+    request.setRequestHeader("Content-Type", "application/octet-stream");
+    request.upload.onprogress = event => {
+      if (!event.lengthComputable) return;
+      const percent = Math.round(event.loaded / event.total * 100);
+      setAssetStatus(`${window.t("Importing")}: ${file.name} · ${percent}% · ${formatByteCount(event.loaded)} / ${formatByteCount(event.total)}`);
+    };
+    request.upload.onload = () => setAssetStatus(window.t("Checking media…"));
+    request.onerror = () => reject(new Error(window.t("Import interrupted. Check that Phrasync is still running and try again.")));
+    request.onabort = () => reject(new Error(window.t("Import cancelled.")));
+    request.onload = () => {
+      let data;
+      try { data = JSON.parse(request.responseText); }
+      catch { reject(new Error(window.t("The local server returned an invalid import response."))); return; }
+      if (request.status < 200 || request.status >= 300) reject(new Error(data.detail || `Import failed (${request.status})`));
+      else resolve(data);
+    };
+    request.send(file);
+  });
 }
 
 function setAssetStatus(message, type = "") {
@@ -162,6 +188,9 @@ function applyProjectToControls() {
   els.wordLead.value = Math.round((project.style.wordLead ?? 0.06) * 1000);
   els.sceneKit.value = project.background.sceneKit || "japan";
   els.sceneDirection.value = project.background.sceneDirection || "forward";
+  els.sceneArtStyle.value = project.background.artStyle || "cinematic";
+  els.secondaryMotion.value = project.background.secondaryMotion || "none";
+  els.motionAmount.value = Math.round((project.background.motionAmount ?? .35) * 100);
   els.textSpace.value = project.background.textSpace || "flat";
   els.environmentMode.value = project.background.environmentMode || "manual";
   els.weather.value = project.background.weather || "clear";
@@ -199,6 +228,7 @@ function applyProjectToControls() {
   applyBackgroundTypeUI();
   applyModeUI();
   applyEnvironmentUI();
+  applyOceanUI();
   updatePresetPresentation();
   applyBackgroundPreview();
   applyAudioPreview();
@@ -247,6 +277,7 @@ function activeBackgroundAsset(type = project.background.type) {
 }
 
 function applyBackgroundTypeUI() {
+  applyTextOrientation();
   $$("button", els.backgroundType).forEach(button => button.classList.toggle("active", button.dataset.value === project.background.type));
   const dynamic = project.background.type === "dynamic";
   els.dynamicControls.hidden = !dynamic;
@@ -254,7 +285,10 @@ function applyBackgroundTypeUI() {
   els.sceneControls.hidden = !(
     (dynamic && ["scene", "scene3d"].includes(project.background.visual))
       || project.background.textSpace === "scene");
+  $("#sceneArtControls").hidden = !((dynamic && project.background.visual === "scene3d")
+    || project.background.textSpace === "scene");
   applyEnvironmentUI();
+  applyOceanUI();
   if (!dynamic) {
     const isImage = project.background.type === "image";
     els.backgroundInput.accept = isImage ? "image/*,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff" : "video/mp4,video/webm,.mp4,.webm";

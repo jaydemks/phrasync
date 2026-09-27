@@ -5,3 +5,8 @@ Pillow>=10.4,<13
 numpy>=1.26,<3
 imageio-ffmpeg>=0.5,<1
 websockets>=13,<16
+pywebview>=5.4,<7
+winrt-runtime==3.2.1; sys_platform == "win32"
+winrt-Windows.Foundation==3.2.1; sys_platform == "win32"
+winrt-Windows.Foundation.Collections==3.2.1; sys_platform == "win32"
+winrt-Windows.Services.Store==3.2.1; sys_platform == "win32"

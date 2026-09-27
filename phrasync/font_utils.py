@@ -7,6 +7,8 @@ from pathlib import Path
 
 from PIL import ImageFont
 
+from .config import ASSETS_DIR
+
 FONT_EXTENSIONS = {".ttf", ".otf", ".ttc"}
 
 _PRESET_NAMES = {
@@ -113,6 +115,7 @@ _PRESET_NAMES = {
         "msgothic.ttc",
         "HiraginoSans-W7.ttc",
         "NotoSansJP-Bold.otf",
+        "NotoSansJP-VF.ttf",
         "DejaVuSans-Bold.ttf",
     ],
     "mono": [
@@ -164,6 +167,9 @@ def index_fonts() -> dict[str, Path]:
                     result.setdefault(path.name.lower(), path)
         except (OSError, PermissionError):
             continue
+    bundled_japanese = ASSETS_DIR / "NotoSansJP-VF.ttf"
+    if bundled_japanese.is_file():
+        result.setdefault(bundled_japanese.name.lower(), bundled_japanese)
     return result
 
 
@@ -196,6 +202,44 @@ def load_font(size: int, preset: str = "impact", custom_path: Path | None = None
     if resolved:
         return _load_font_cached(str(resolved), max(8, int(size)))
     return ImageFont.load_default()
+
+
+def _is_japanese_character(char: str) -> bool:
+    codepoint = ord(char)
+    return (
+        0x3040 <= codepoint <= 0x30FF  # hiragana and katakana
+        or 0x3400 <= codepoint <= 0x9FFF  # common kanji and extension A
+        or 0xFF66 <= codepoint <= 0xFF9D  # half-width katakana
+    )
+
+
+def _covers_japanese_text(font, text: str) -> bool:
+    # Pillow does not perform the per-glyph fallback used by the browser. A
+    # missing character is drawn with the same .notdef box as this noncharacter.
+    missing = font.getmask("\U0010FFFF")
+    missing_signature = (missing.size, bytes(missing))
+    return all(
+        (mask.size, bytes(mask)) != missing_signature
+        for char in text if _is_japanese_character(char)
+        for mask in (font.getmask(char),)
+    )
+
+
+@lru_cache(maxsize=4096)
+def load_font_for_text(size: int, preset: str, text: str, custom_path: Path | None = None):
+    """Preserve the chosen font except where Japanese glyphs would be boxes."""
+    font = load_font(size, preset, custom_path)
+    if not any(_is_japanese_character(char) for char in text):
+        return font
+    if _covers_japanese_text(font, text):
+        return font
+    for candidate in _PRESET_NAMES["jgothic"]:
+        path = index_fonts().get(candidate.lower())
+        if path:
+            replacement = _load_font_cached(str(path), max(8, int(size)))
+            if _covers_japanese_text(replacement, text):
+                return replacement
+    raise ValueError("No Japanese font is available for this text")
 
 
 def font_status() -> dict:

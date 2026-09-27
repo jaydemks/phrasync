@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
 from . import kinetic
-from .font_utils import load_font
+from .font_utils import load_font, load_font_for_text
 from .render_utils import clamp, hex_color, scale_for_canvas
 
 if TYPE_CHECKING:
@@ -173,13 +173,17 @@ def _render_kinetic(
     def token_of(word: dict[str, Any]) -> str:
         return word["text"].upper() if uppercase else word["text"]
 
+    def font_for_token(line_index: int, word: dict[str, Any]):
+        base_font = font_for(line_index)
+        return load_font_for_text(base_font.size, fonts["preset"], token_of(word), fonts["path"])
+
     # ---- layout pass: static geometry, so words never jitter horizontally ----
     placed: list[tuple[dict[str, Any], Any, int, int, bool]] = []
     line_boxes: list[tuple[float, int]] = []
     for line_index, line in enumerate(lines):
         font = font_for(line_index)
         gap = int(font.size * spec.word_gap)
-        widths = [measure.textlength(token_of(word), font=font) for word in line]
+        widths = [measure.textlength(token_of(word), font=font_for_token(line_index, word)) for word in line]
         total = sum(widths) + gap * max(0, len(line) - 1)
         line_boxes.append((total, int(font.size * spec.line_height)))
 
@@ -197,6 +201,7 @@ def _render_kinetic(
         x = (ctx.width - total) / 2
         for word in line:
             token = token_of(word)
+            font = font_for_token(line_index, word)
             width = measure.textlength(token, font=font)
             lead = spec.layout == "stack" and line_index == 0 and len(lines) > 1
             placed.append((word, font, int(x), int(line_y + line_height * 0.5), lead))

@@ -4,7 +4,9 @@ import argparse
 import asyncio
 import ipaddress
 import json
+import os
 import platform
+import re
 import threading
 import time
 import webbrowser
@@ -15,12 +17,13 @@ from typing import Any, AsyncIterator
 import uvicorn
 from fastapi import Body, FastAPI, File, HTTPException, UploadFile
 from fastapi import Request
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 from phrasync import APP_NAME, APP_VERSION
-from phrasync.cuda import configure_cuda_paths
+from phrasync.cuda import configure_cuda_paths, cuda_diagnostics
+from phrasync.diagnostics import install_exception_hooks, log_event, log_exception, support_report
 
 CUDA_PATHS = configure_cuda_paths()
 
@@ -37,10 +40,12 @@ from phrasync.align import align_cues, alignment_stats, estimate_offset
 from phrasync.audio_analysis import AnalysisUnavailable, analyze_audio
 from phrasync.font_utils import font_status
 from phrasync.jobs import manager
+from phrasync.desktop_export import DesktopExportBridge
 from phrasync.media import ffmpeg_exe, probe_duration
 from phrasync.ocr import OCRUnavailable, capability_status as ocr_status, ocr_image
 from phrasync.qa import preflight_project
-from phrasync.storage import delete_asset, get_asset, get_av_asset, list_assets, store_stream
+from phrasync.storage import delete_asset, get_asset, get_av_asset, list_assets, store_stream, store_chunks
+from phrasync.store_updates import StoreUpdateUnavailable, check_updates, install_updates, package_identity
 from phrasync.server import (
     available_port,
     browser_host,
@@ -78,7 +83,22 @@ app = FastAPI(
     redoc_url=None,
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def log_server_errors(request: Request, call_next):
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        log_exception(f"http {request.url.path}", exc)
+        raise
+    if response.status_code >= 500:
+        log_event("error", "http", f"{request.method} {request.url.path} returned {response.status_code}")
+    return response
+
+
 server: uvicorn.Server | None = None
+desktop_export = DesktopExportBridge()
 class RevalidatingStatic(StaticFiles):
     """Serve editor assets with must-revalidate.
 
@@ -99,8 +119,17 @@ app.mount("/bundled", StaticFiles(directory=ASSETS_DIR), name="bundled")
 
 
 @app.get("/", include_in_schema=False)
-def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+def index() -> HTMLResponse:
+    # Both the document and every asset URL change with the app version. An
+    # in-place Store update must never combine yesterday's HTML with today's
+    # JavaScript (which can stop all button handlers before they are bound).
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    html = re.sub(
+        r'((?:src|href)="/static/[^"?]+)(")',
+        lambda match: f"{match.group(1)}?v={APP_VERSION}{match.group(2)}",
+        html,
+    )
+    return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
 
 
 @app.get("/favicon.svg", include_in_schema=False)
@@ -127,6 +156,7 @@ def health() -> dict[str, Any]:
         "transcription": transcription_status(),
         "fonts": font_status(),
         "cudaPaths": CUDA_PATHS,
+        "gpu": cuda_diagnostics(),
     }
 
 
@@ -136,6 +166,56 @@ def instance() -> dict[str, str]:
     return {"app": APP_NAME, "version": APP_VERSION}
 
 
+@app.get("/api/store-updates/status")
+def store_update_status(request: Request) -> dict[str, Any]:
+    _require_local_request(request)
+    return {"version": APP_VERSION, "packaged": bool(package_identity())}
+
+
+@app.post("/api/store-updates/check")
+async def store_update_check(request: Request) -> dict[str, Any]:
+    _require_local_request(request)
+    _require_same_origin(request)
+    try:
+        result = await check_updates()
+    except StoreUpdateUnavailable as exc:
+        log_event("warning", "updates", str(exc))
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    log_event("info", "updates", "Store update available" if result["available"] else "Store app up to date")
+    return result
+
+
+@app.post("/api/store-updates/install")
+async def store_update_install(request: Request) -> dict[str, Any]:
+    _require_local_request(request)
+    _require_same_origin(request)
+    try:
+        result = await install_updates()
+    except StoreUpdateUnavailable as exc:
+        log_event("error", "updates", str(exc))
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    log_event("info", "updates", f"Store installation state: {result['state']}")
+    return result
+
+
+@app.get("/api/diagnostics", response_class=PlainTextResponse)
+def diagnostics_report(request: Request) -> PlainTextResponse:
+    _require_local_request(request)
+    return PlainTextResponse(support_report(), headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/diagnostics/events")
+def diagnostics_event(request: Request, payload: dict[str, Any] = Body(...)) -> dict[str, bool]:
+    _require_local_request(request)
+    level = str(payload.get("level") or "info")
+    category = str(payload.get("category") or "frontend")
+    message = str(payload.get("message") or "")
+    if not message or len(message) > 4000:
+        raise HTTPException(status_code=400, detail="Invalid diagnostic event")
+    log_event(level, category, message)
+    return {"recorded": True}
+
+
 def _require_local_request(request: Request) -> None:
     try:
         is_local = ipaddress.ip_address(request.client.host).is_loopback if request.client else False
@@ -143,6 +223,13 @@ def _require_local_request(request: Request) -> None:
         is_local = False
     if not is_local:
         raise HTTPException(status_code=403, detail="Local settings are only available on this computer")
+
+
+def _require_same_origin(request: Request) -> None:
+    origin = request.headers.get("origin", "")
+    expected = f"{request.url.scheme}://{request.headers.get('host', '')}"
+    if origin != expected:
+        raise HTTPException(status_code=403, detail="This action must be started in Phrasync")
 
 
 @app.post("/api/shutdown")
@@ -200,6 +287,21 @@ def upload_asset(kind: str, file: UploadFile = File(...)) -> dict[str, Any]:
 @app.delete("/api/assets/{asset_id}")
 def remove_asset(asset_id: str) -> dict[str, bool]:
     return {"deleted": delete_asset(asset_id)}
+
+
+@app.post("/api/assets/{kind}/stream")
+async def upload_asset_stream(kind: str, request: Request, filename: str) -> dict[str, Any]:
+    try:
+        content_length = request.headers.get("content-length")
+        asset = await store_chunks(kind, filename, request.stream(), int(content_length) if content_length else None)
+        result = asset.public()
+        if kind in {"audio", "video"}:
+            result["duration"] = await run_in_threadpool(probe_duration, Path(asset.path))
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=507, detail="Unable to save the import. Check available disk space and folder access.") from exc
 
 
 @app.post("/api/ocr")
@@ -385,7 +487,8 @@ def create_render(payload: dict[str, Any] = Body(...)) -> JSONResponse:
     if not isinstance(project, dict):
         raise HTTPException(status_code=400, detail="Missing project payload")
     title = str(payload.get("title") or project.get("title") or "phrasync_export")
-    job = manager.create_render(project, title)
+    output_dir = Path(desktop_export.get_render_directory()) if desktop_export._window else None
+    job = manager.create_render(project, title, output_dir)
     return JSONResponse(job.public(), status_code=202)
 
 
@@ -425,12 +528,75 @@ def _open_browser(host: str, port: int) -> None:
     webbrowser.open(f"http://{browser_host(host)}:{port}")
 
 
+def _wait_for_server(host: str, port: int, timeout: float = 15.0) -> str:
+    """Wait until the local API is ready before displaying the desktop shell."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        url = instance_url(host, port)
+        if url:
+            return url
+        time.sleep(0.1)
+    raise RuntimeError(f"{APP_NAME} could not start its local interface on port {port}.")
+
+
+def _open_desktop_window(url: str) -> None:
+    """Host the local editor in a real Windows application window."""
+    # WebView2 normally enables acceleration automatically, but explicitly
+    # retain its GPU compositor/raster path for Store-packaged desktop builds.
+    # Preserve caller-provided switches (useful for diagnostics) and avoid
+    # replacing a remote-debugging port supplied by a release smoke test.
+    gpu_switches = (
+        "--enable-gpu",
+        "--enable-gpu-rasterization",
+        "--enable-zero-copy",
+        "--enable-features=CanvasOopRasterization",
+    )
+    existing_switches = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "").strip()
+    present = set(existing_switches.split())
+    os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = " ".join(
+        [existing_switches, *(switch for switch in gpu_switches if switch not in present)]
+    ).strip()
+    try:
+        import webview
+    except Exception as exc:  # pragma: no cover - packaging/runtime failure
+        raise RuntimeError(
+            "The desktop interface is unavailable. Reinstall Phrasync from Microsoft Store."
+        ) from exc
+
+    if os.name == "nt":
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Phrasync.Desktop")
+    # A new document URL bypasses WebView2's persisted HTML cache after an
+    # MSIX in-place upgrade. Query parameters do not change the local route.
+    document_url = f"{url}{'&' if '?' in url else '?'}desktop=1&app_version={APP_VERSION}"
+    desktop_export._window = webview.create_window(
+        APP_NAME,
+        document_url,
+        width=1480,
+        height=940,
+        min_size=(1100, 720),
+        resizable=True,
+        background_color="#0b0912",
+        js_api=desktop_export,
+    )
+    # Edge Chromium uses the Windows WebView2 runtime and keeps Phrasync inside
+    # its own app window instead of exposing a browser tab to the user.
+    webview.start(gui="edgechromium", debug=False, private_mode=False, icon=str(ASSETS_DIR / "Phrasync.ico"))
+
+
 def main() -> None:
     global server
+    install_exception_hooks()
+    log_event("info", "startup", f"Phrasync {APP_VERSION} launcher starting")
     parser = argparse.ArgumentParser(description=f"Run {APP_NAME}")
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument(
+        "--external-browser",
+        action="store_true",
+        help="open the editor in the default browser instead of the desktop window",
+    )
     parser.add_argument("--reload", action="store_true")
     parser.add_argument(
         "--strict-port",
@@ -440,10 +606,13 @@ def main() -> None:
     args = parser.parse_args()
 
     existing = instance_url(args.host, args.port)
-    if existing and not args.reload:
+    if existing and not args.reload and (args.no_browser or args.external_browser):
         print(f"{APP_NAME} is already running at {existing}")
         if not args.no_browser:
-            webbrowser.open(existing)
+            if args.external_browser:
+                webbrowser.open(existing)
+            else:
+                _open_desktop_window(existing)
         return
 
     selected_port = args.port
@@ -451,7 +620,7 @@ def main() -> None:
         selected_port = available_port(args.host, args.port)
         if selected_port != args.port:
             print(f"Port {args.port} is in use; starting {APP_NAME} on port {selected_port}.")
-    if not args.no_browser and not args.reload:
+    if args.external_browser and not args.no_browser and not args.reload:
         threading.Thread(target=_open_browser, args=(args.host, selected_port), daemon=True).start()
 
     if args.reload:
@@ -461,9 +630,30 @@ def main() -> None:
 
     # Passing the app object keeps this module's server reference available to
     # the local /api/shutdown endpoint.
-    config = uvicorn.Config(app, host=args.host, port=selected_port, log_level="info")
+    config = uvicorn.Config(
+        app,
+        host=args.host,
+        port=selected_port,
+        log_level="warning",
+        access_log=False,
+        # A Windows GUI executable intentionally has no stdout/stderr streams.
+        # Uvicorn's default colour formatter probes stderr.isatty(), which would
+        # otherwise prevent the packaged application from starting.
+        log_config=None,
+    )
     server = uvicorn.Server(config)
-    server.run()
+    if args.no_browser or args.external_browser:
+        server.run()
+        return
+
+    server_thread = threading.Thread(target=server.run, name="phrasync-server", daemon=True)
+    server_thread.start()
+    try:
+        url = _wait_for_server(args.host, selected_port)
+        _open_desktop_window(url)
+    finally:
+        server.should_exit = True
+        server_thread.join(timeout=5)
 
 
 if __name__ == "__main__":

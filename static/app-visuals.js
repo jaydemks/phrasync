@@ -25,7 +25,10 @@ function audioAmplitude() {
 
 function resizeVisualCanvas() {
   const rect = els.visualCanvas.getBoundingClientRect();
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  // The preview is already scaled inside the editor. Rendering it at a full
+  // high-DPI backing resolution wastes millions of pixels per frame in a
+  // desktop WebView without improving the exported video.
+  const dpr = IS_DESKTOP_HOST ? 1 : Math.min(1.5, window.devicePixelRatio || 1);
   const width = Math.max(2, Math.round(rect.width * dpr));
   const height = Math.max(2, Math.round(rect.height * dpr));
   if (els.visualCanvas.width !== width || els.visualCanvas.height !== height) {
@@ -101,6 +104,12 @@ function drawSceneGL(t, bg, pulse, intensity) {
   }
   scene.update(t, {
     direction: bg.sceneDirection || "forward",
+    artStyle: bg.artStyle || "cinematic",
+    secondaryMotion: bg.secondaryMotion || "none",
+    motionAmount: bg.motionAmount ?? .35,
+    sunAzimuth: bg.sunAzimuth ?? 25, sunElevation: bg.sunElevation ?? 12,
+    moonAzimuth: bg.moonAzimuth ?? -25, moonElevation: bg.moonElevation ?? 18,
+    waveStrength: bg.oceanWaveStrength ?? .65,
     seed: bg.sceneSeed || 1337,
     speed: sceneSpeedFor(bg, intensity),
     density: bg.sceneDensity ?? 1,
@@ -186,8 +195,8 @@ function drawDynamicVisual(now) {
   if (bg.visual === "particles") {
     ctx.globalCompositeOperation = "screen";
     for (const particle of particles) {
-      particle.x += particle.speed * (.35 + intensity) * (window.devicePixelRatio || 1);
-      particle.y -= particle.speed * .23 * (window.devicePixelRatio || 1);
+      particle.x += particle.speed * (.35 + intensity);
+      particle.y -= particle.speed * .23;
       if (particle.x > width + 4) particle.x = -4;
       if (particle.y < -4) particle.y = height + 4;
       const twinkle = .65 + .35 * Math.sin(t * 1.2 + particle.phase);
@@ -256,52 +265,6 @@ function prepareWebGLOverlay(time) {
   const intensity = bg.visualIntensity;
   const pulse = Math.max(beatValue(time), audioAmplitude() * 0.8);
   return drawSceneGL(time, bg, pulse, intensity);
-}
-
-function animationLoop(now) {
-  if (window.__vfExportMode) {
-    requestAnimationFrame(animationLoop);
-    return;
-  }
-  if (virtualPlaying) {
-    const time = currentPlaybackTime();
-    if (time >= projectDuration()) {
-      virtualTime = projectDuration();
-      virtualPlaying = false;
-      updatePlayButton();
-    }
-  }
-  const time = currentPlaybackTime();
-  let glScene = null;
-  if (project.background.type === "dynamic") {
-    try {
-      glScene = drawDynamicVisual(now);
-    } catch (error) {
-      // One bad frame must not kill the animation loop and freeze the editor.
-      if (!window.__visualErrorShown) {
-        window.__visualErrorShown = true;
-        console.error("Background visual failed:", error);
-        toast(`Sfondo non disponibile: ${error.message}`, "error");
-      }
-    }
-  } else {
-    try {
-      glScene = prepareWebGLOverlay(time);
-    } catch (error) {
-      if (!window.__visualErrorShown) {
-        window.__visualErrorShown = true;
-        console.error("3D lyric layer failed:", error);
-        toast(`3D text is unavailable: ${error.message}`, "error");
-      }
-    }
-  }
-  // Build/update the scene first. Scene switches replace its text layer, so
-  // lyrics must be submitted afterwards and rendered only once both are ready.
-  updatePlaybackUI(time);
-  glScene?.render();
-  if (project.background.type === "video") syncBackgroundVideo(time);
-  timeline?.tick();
-  requestAnimationFrame(animationLoop);
 }
 
 /** Deterministic frame hook used by the local MP4 WebGL renderer. */

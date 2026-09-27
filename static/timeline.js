@@ -413,7 +413,7 @@
 
     resize() {
       const rect = this.host.getBoundingClientRect();
-      this.dpr = window.devicePixelRatio || 1;
+      this.dpr = IS_DESKTOP_HOST ? 1 : Math.min(1.5, window.devicePixelRatio || 1);
       this.width = Math.max(200, Math.floor(rect.width));
       this.height = this.laneTops.bottom + 4;
       this.canvas.width = Math.floor(this.width * this.dpr);
@@ -449,6 +449,7 @@
       const theme = this.theme;
       const tops = this.laneTops;
       const playhead = time === undefined ? this.getTime() : time;
+      this._lastPaintTime = playhead;
 
       ctx.clearRect(0, 0, this.width, this.height);
 

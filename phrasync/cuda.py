@@ -4,6 +4,7 @@ import ctypes
 import os
 import site
 import sys
+from importlib import import_module
 from pathlib import Path
 
 _DLL_HANDLES: list[object] = []
@@ -47,6 +48,22 @@ def windows_cuda_directories() -> list[Path]:
             candidates.append(bin_dir)
             if bin_dir.is_dir():
                 candidates.extend(sorted((path for path in bin_dir.iterdir() if path.is_dir()), reverse=True))
+
+    # Release builds vendor the redistributable CUDA runtime wheels so NVIDIA
+    # acceleration works on a clean Store installation with only a compatible
+    # display driver. Importing the namespace is more reliable than assuming a
+    # conventional site-packages layout inside a PyInstaller bundle.
+    for package in ("cublas", "cudnn"):
+        try:
+            module = import_module(f"nvidia.{package}")
+            candidates.append(Path(module.__file__).resolve().parent / "bin")
+        except (ImportError, AttributeError, OSError, TypeError):
+            pass
+
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if bundle_root:
+        for package in ("cublas", "cudnn"):
+            candidates.append(Path(bundle_root) / "nvidia" / package / "bin")
 
     site_roots = [Path(sys.prefix) / "Lib" / "site-packages"]
     try:
@@ -93,3 +110,31 @@ def cuda_runtime_available() -> bool:
     except OSError:
         return False
     return True
+
+
+def cuda_diagnostics() -> dict[str, object]:
+    """Return actionable GPU diagnostics for the UI and support reports."""
+    paths = configure_cuda_paths()
+    device_count = 0
+    error = ""
+    try:
+        import ctranslate2
+
+        device_count = int(ctranslate2.get_cuda_device_count())
+    except Exception as exc:
+        error = str(exc)
+    runtime = cuda_runtime_available()
+    if device_count < 1:
+        reason = "No compatible NVIDIA GPU or driver was detected"
+    elif not runtime:
+        reason = "NVIDIA GPU detected, but the CUDA/cuDNN runtime is unavailable"
+    else:
+        reason = "NVIDIA CUDA acceleration is ready"
+    return {
+        "available": bool(device_count and runtime),
+        "deviceCount": device_count,
+        "runtimeAvailable": runtime,
+        "paths": paths,
+        "reason": reason,
+        "error": error,
+    }

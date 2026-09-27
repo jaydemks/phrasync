@@ -1,5 +1,6 @@
 import json
 import time
+from pathlib import Path
 
 import app as app_module
 from fastapi.testclient import TestClient
@@ -43,6 +44,9 @@ def test_render_job_status_and_download(tmp_path, monkeypatch):
 
     monkeypatch.setattr(jobs_module, "JOBS_DIR", tmp_path)
     monkeypatch.setattr(jobs_module, "RENDERS_DIR", tmp_path)
+    selected_dir = tmp_path / "selected exports"
+    monkeypatch.setattr(app_module.desktop_export, "_window", object())
+    monkeypatch.setattr(app_module.desktop_export, "_directory", selected_dir)
     client = TestClient(app)
     project = {
         "title": "API smoke",
@@ -64,6 +68,7 @@ def test_render_job_status_and_download(tmp_path, monkeypatch):
                 break
             time.sleep(0.05)
         assert status["state"] == "complete", json.dumps(status, indent=2)
+        assert Path(status["result"]["path"]).parent == selected_dir
         download = client.get(f"/api/render/{job_id}/download")
         assert download.status_code == 200
         assert download.content.startswith(b"\x00\x00")

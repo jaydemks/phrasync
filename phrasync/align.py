@@ -9,11 +9,58 @@ what makes a lyric video feel "on time" rather than merely correct.
 from __future__ import annotations
 
 from typing import Any
+import math
 
 from .kinetic import clamp, cue_words
 
 MIN_WORD_DURATION = 0.10
 MIN_CUE_DURATION = 0.30
+
+
+def trim_silent_entrances(
+    cues: list[dict[str, Any]], analysis: dict[str, Any]
+) -> tuple[list[dict[str, Any]], int]:
+    """Trim demonstrable silence swallowed by a phrase's first timestamp.
+
+    This is deliberately not a vocal detector: instrumental or soft audible
+    material is left alone. Word ends and all subsequent word timestamps stay
+    intact. Never apply a guessed fixed delay to every word.
+    """
+    peaks = analysis.get("peaks") or []
+    rate = float(analysis.get("peaksPerSecond") or 0)
+    if not peaks or not math.isfinite(rate) or rate < 20:
+        return cues, 0
+    result = []
+    corrected = 0
+    previous_end = -math.inf
+    for cue in cues:
+        stored = cue.get("words") or []
+        updated = cue
+        if stored:
+            first = stored[0]
+            start, end = float(first["start"]), float(first["end"])
+            if start - previous_end >= 0.25 and end - start >= 0.45:
+                begin = max(0, math.ceil(start * rate))
+                finish = min(len(peaks), math.floor(end * rate))
+                window = peaks[begin:finish]
+                peak = max(window, default=0)
+                # Peaks are perceptually scaled to 0..255. This low ceiling
+                # protects quiet syllables and sustained notes from trimming.
+                quiet = min(12.0, peak * 0.08)
+                run = max(2, math.ceil(rate * 0.05))
+                onset = next((i for i, value in enumerate(window) if value > quiet), None)
+                if peak >= 24 and onset is not None and onset / rate >= 0.18:
+                    attack = window[onset:onset + run]
+                    new_start = max(start, (begin + onset) / rate - 0.04)
+                    if (len(attack) == run and all(value > quiet for value in attack)
+                            and new_start <= end - MIN_WORD_DURATION):
+                        updated = {**cue, "start": new_start,
+                                   "words": [{**first, "start": new_start},
+                                             *[dict(word) for word in stored[1:]]]}
+                        corrected += 1
+        result.append(updated)
+        previous_end = float(cue.get("end", 0))
+    return result, corrected
 
 
 def _word_starts(cues: list[dict[str, Any]]) -> list[float]:
@@ -116,6 +163,7 @@ def align_cues(
     snap_phrases: bool = False,
     phrase_grid: str = "beat",
     auto_offset: bool = True,
+    trim_silence: bool = True,
 ) -> dict[str, Any]:
     """Return re-timed cues plus a report on what changed."""
     onsets = sorted(float(value) for value in (analysis.get("onsets") or []))
@@ -123,7 +171,9 @@ def align_cues(
     bpm = float(analysis.get("bpm") or 0.0)
     beat_offset = float(analysis.get("beatOffset") or 0.0)
 
-    report: dict[str, Any] = {"offset": 0.0, "offsetConfidence": 0.0, "snapped": 0, "words": 0}
+    cues, trimmed = trim_silent_entrances(cues, analysis) if trim_silence else (cues, 0)
+    report: dict[str, Any] = {"offset": 0.0, "offsetConfidence": 0.0, "snapped": 0, "words": 0,
+                              "trimmedSilentEntrances": trimmed}
 
     if offset is None and auto_offset:
         estimate = estimate_offset(cues, onsets)

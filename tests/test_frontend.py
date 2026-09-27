@@ -10,13 +10,20 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 APP_SCRIPTS = [
+    "diagnostics.js",
+    "i18n.js",
     "app-state.js",
     "app-modes.js",
+    "app-ocean.js",
+    "app-text-orientation.js",
     "app-ui.js",
     "app-lyrics.js",
     "app-visuals.js",
+    "app-loop.js",
     "app-cues.js",
     "app-workflows.js",
+    "app-render.js",
+    "store-updates.js",
     "app-timeline.js",
     "app.js",
 ]
@@ -29,7 +36,8 @@ def test_frontend_fragments_are_ordered_once_and_stay_focused():
         tag = f'<script src="/static/{name}" defer></script>'
         assert html.count(tag) == 1, name
         positions.append(html.index(tag))
-        assert len((STATIC / name).read_text(encoding="utf-8").splitlines()) <= 400, name
+        limit = 450 if name == "i18n.js" else 400  # the translation dictionary grows with UI copy
+        assert len((STATIC / name).read_text(encoding="utf-8").splitlines()) <= limit, name
     assert positions == sorted(positions)
 
 
@@ -73,6 +81,7 @@ if (samples.join(',') !== '17.2,16,8,1') process.exit(2);
 
 def test_3d_mode_is_not_coupled_to_background_or_canvas_visibility():
     visuals = (STATIC / "app-visuals.js").read_text(encoding="utf-8")
+    loop = (STATIC / "app-loop.js").read_text(encoding="utf-8")
     lyrics = (STATIC / "app-lyrics.js").read_text(encoding="utf-8")
     ui = (STATIC / "app-ui.js").read_text(encoding="utf-8")
 
@@ -81,14 +90,14 @@ def test_3d_mode_is_not_coupled_to_background_or_canvas_visibility():
     assert "textSpace === \"scene\"" in lyric_mode
     assert ".hidden" not in lyric_mode
     assert "prepareWebGLOverlay(time)" in visuals
-    assert "project.background.type === \"dynamic\"" in visuals
-    assert "glScene = prepareWebGLOverlay(time)" in visuals
-    assert visuals.index("glScene = drawDynamicVisual(now)") < visuals.index("updatePlaybackUI(time)")
-    assert visuals.index("updatePlaybackUI(time)") < visuals.index("glScene?.render()")
+    assert "project.background.type === \"dynamic\"" in loop
+    assert "prepareWebGLOverlay(time)" in loop
+    assert loop.index("drawDynamicVisual(now)") < loop.index("updatePlaybackUI(time)")
+    assert loop.index("updatePlaybackUI(time)") < loop.index("glScene?.render()")
 
     assert "return lyric3DEnabled();" in lyrics
     assert "clearLyric();" in lyrics
-    assert "lead: Math.max(spec.lead, 0.6)" in lyrics
+    assert "preset3D(spec, true)" in lyrics
     assert "|| project.background.textSpace === \"scene\"" in ui
 
 
@@ -117,14 +126,45 @@ def test_project_modes_and_environment_controls_are_wired():
     assert "cam.x + slot.x" not in scene
 
 
-def test_user_facing_copy_has_no_known_italian_leftovers():
-    sources = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in [STATIC / "index.html", *sorted(STATIC.glob("*.js"))]
-    )
-    for leftover in (
-        "Giappone", "Italia</option>", "Intensità motion", "Analizza audio",
-        "Nessuna analisi", "Esporta</button>", "Mondo rigenerato",
-        "Testo 3D non disponibile", "nessuna parola",
-    ):
-        assert leftover not in sources
+def test_interface_defaults_to_english_and_offers_persistent_italian_toggle():
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    i18n = (STATIC / "i18n.js").read_text(encoding="utf-8")
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+
+    assert '<html lang="en"' in html
+    assert 'id="languageToggle"' in html
+    assert 'id="onboardingLanguageToggle"' in html
+    assert 'id="onboardingDialog"' in html
+    assert "Your first transcription downloads an AI model" in html
+    assert 'const LANGUAGE_KEY = "phrasync.language"' in i18n
+    assert 'currentLanguage = "en"' in i18n
+    assert '"Start creating": "Inizia a creare"' in i18n
+    assert "initI18n();" in app
+
+
+def test_transcription_progress_formats_model_download_size_and_eta():
+    workflow = (STATIC / "app-workflows.js").read_text(encoding="utf-8")
+    i18n = (STATIC / "i18n.js").read_text(encoding="utf-8")
+    assert "formatTranscriptionJob(job)" in workflow
+    assert 'job?.phase === "model-download"' in i18n
+    assert "job.downloaded_bytes" in i18n
+    assert "job.total_bytes" in i18n
+    assert "job.eta_seconds" in i18n
+
+
+def test_desktop_preview_limits_expensive_idle_work():
+    state = (STATIC / "app-state.js").read_text(encoding="utf-8")
+    visuals = (STATIC / "app-visuals.js").read_text(encoding="utf-8")
+    loop = (STATIC / "app-loop.js").read_text(encoding="utf-8")
+    timeline = (STATIC / "timeline.js").read_text(encoding="utf-8")
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+
+    assert 'get("desktop") === "1"' in state
+    assert "1000 / 60" in loop and "1000 / 12" in loop
+    assert "document.hidden" in loop
+    assert "if (playing || timeline?._lastPaintTime !== lyricTime()) timeline?.tick();" in loop
+    assert "this._lastPaintTime = playhead" in timeline
+    assert "IS_DESKTOP_HOST ? 1" in visuals
+    assert "IS_DESKTOP_HOST ? 1" in timeline
+    assert ".desktop-host .topbar" in styles
+    assert "backdrop-filter: none" in styles

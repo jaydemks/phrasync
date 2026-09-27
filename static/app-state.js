@@ -9,6 +9,8 @@ const THEME_KEY = "phrasync.theme";
 // existing autosave and theme choice survive the rename.
 const LEGACY_STORAGE_KEY = "verseframe.project.v1";
 const LEGACY_THEME_KEY = "verseframe.theme";
+const IS_DESKTOP_HOST = new URLSearchParams(location.search).get("desktop") === "1";
+document.documentElement.classList.toggle("desktop-host", IS_DESKTOP_HOST);
 
 const DEFAULT_PROJECT = {
   version: 2,
@@ -25,6 +27,9 @@ const DEFAULT_PROJECT = {
     visual: "aurora",
     sceneKit: "japan",
     sceneDirection: "forward",
+    artStyle: "cinematic",
+    secondaryMotion: "none",
+    motionAmount: .35,
     textSpace: "flat",
     sceneBeat: false,
     sceneWave: false,
@@ -194,6 +199,9 @@ const els = {
   sceneControls: $("#sceneControls"),
   sceneKit: $("#sceneKit"),
   sceneDirection: $("#sceneDirection"),
+  sceneArtStyle: $("#sceneArtStyle"),
+  secondaryMotion: $("#secondaryMotion"),
+  motionAmount: $("#motionAmount"),
   textSpace: $("#textSpace"),
   sceneBeat: $("#sceneBeat"),
   sceneWave: $("#sceneWave"),
@@ -322,6 +330,11 @@ const els = {
   renderResult: $("#renderResult"),
   renderMeta: $("#renderMeta"),
   downloadRender: $("#downloadRender"),
+  renderDirectory: $("#renderDirectory"),
+  chooseRenderDirectory: $("#chooseRenderDirectory"),
+  openRenderDirectory: $("#openRenderDirectory"),
+  openDefaultRenderDirectory: $("#openDefaultRenderDirectory"),
+  confirmRender: $("#confirmRender"),
   renderError: $("#renderError"),
   cancelRender: $("#cancelRender"),
   toastStack: $("#toastStack"),
@@ -371,6 +384,7 @@ const rangeOutputs = {
   timingOffset: ["timingOffsetOut", value => `${value > 0 ? "+" : ""}${value} ms`],
   wordLead: ["wordLeadOut", value => `${value} ms`],
   sceneSpeed: ["sceneSpeedOut", value => `${value}%`],
+  motionAmount: ["motionAmountOut", value => `${value}%`],
   sceneDensity: ["sceneDensityOut", value => `${value}%`],
   waveIntensity: ["waveIntensityOut", value => `${value}%`]
 };

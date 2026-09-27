@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .config import WORKSPACE
-from .cuda import cuda_runtime_available
+from .cuda import cuda_diagnostics, cuda_runtime_available
 from .language_map import (
     build_language_map,
     detect_phrase_languages,
@@ -22,6 +22,7 @@ from .language_map import (
     speech_clips,
 )
 from .media import probe_duration
+from .model_download import ensure_model
 from .subtitles import normalize_cues
 from .transcription_guard import (
     gauntlet_report,
@@ -57,7 +58,14 @@ def capability_status() -> dict[str, Any]:
             cuda = ctranslate2.get_cuda_device_count() > 0 and cuda_runtime_available()
         except Exception:
             cuda = False
-    return {"available": installed, "cuda": cuda}
+    diagnostics = cuda_diagnostics() if installed else {
+        "available": False,
+        "deviceCount": 0,
+        "runtimeAvailable": False,
+        "reason": "Local transcription components are not installed",
+        "error": "",
+    }
+    return {"available": installed, "cuda": cuda, "gpu": diagnostics}
 
 
 def _device_config() -> tuple[str, str]:
@@ -72,19 +80,22 @@ def _device_config() -> tuple[str, str]:
 
 
 @lru_cache(maxsize=3)
-def _load_model(model_name: str, device: str, compute_type: str):
+def _load_model(model_source: str, device: str, compute_type: str):
     try:
         from faster_whisper import WhisperModel
     except Exception as exc:  # pragma: no cover - tested via capability endpoint
         raise TranscriptionUnavailable(
             "faster-whisper is not installed. Run the AI dependency installer."
         ) from exc
-    return WhisperModel(
-        model_name,
+    model = WhisperModel(
+        model_source,
         device=device,
         compute_type=compute_type,
-        download_root=str(MODEL_DIR),
     )
+    from .long_audio import BoundedFeatureExtractor
+
+    model.feature_extractor = BoundedFeatureExtractor(model.feature_extractor)
+    return model
 
 
 def _punctuation_break(text: str) -> bool:
@@ -505,7 +516,7 @@ def transcribe_audio(
     model_name: str = "base",
     language: str = "auto",
     vad_filter: bool = False,
-    progress: Callable[[float, str], None] | None = None,
+    progress: Callable[..., None] | None = None,
     cancel_check: Callable[[], bool] | None = None,
     language_spans: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
@@ -526,10 +537,22 @@ def transcribe_audio(
     if unknown:
         raise ValueError(f"Unknown language code: {', '.join(sorted(set(unknown)))}")
 
+    model_source = ensure_model(
+        model_name,
+        MODEL_DIR,
+        progress=progress,
+        cancel_check=cancel_check,
+    )
+    _guard(cancel_check)
     device, compute_type = _device_config()
     if progress:
-        progress(0.02, f"Loading {model_name} on {device}")
-    model = _load_model(model_name, device, compute_type)
+        accelerator = "NVIDIA GPU" if device == "cuda" else "CPU"
+        progress(
+            0.14,
+            f"Loading Whisper {model_name} on {accelerator}",
+            {"phase": "model-load", "device": device, "etaSeconds": None},
+        )
+    model = _load_model(str(model_source), device, compute_type)
     _guard(cancel_check)
     duration = probe_duration(path) or 0.0
 

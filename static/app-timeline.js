@@ -274,6 +274,7 @@ function setupTimeline() {
     },
     onSelect: id => {
       selectedCueId = id;
+      revealCueInList(id);
       selectedWordIndex = 0;
       tapQueue = [];
       $$(".cue-card", els.cueList).forEach(card => card.classList.toggle("selected", card.dataset.id === id));

@@ -1,3 +1,80 @@
+# Phrasync v0.4.3 — Microsoft Store submission
+
+This release makes updates and troubleshooting more reliable.
+
+- Fixed a WebView2 cache mismatch that could leave controls unresponsive after an in-place Store update. The desktop document and static resources now use versioned URLs and fresh-cache rules.
+- Added Settings → App updates. Store-installed copies can check for future releases and request installation directly from Phrasync, with the user's consent. Portable preview copies explain why Store updates are unavailable.
+- Added a Diagnostics panel with recent errors and relevant Windows, CPU, GPU, RAM, app-version, and disk information. Reports can be copied or downloaded for support; users should review them before sharing.
+- Kept the 0.4.2 export fixes: choose an output folder before rendering, open selected or default render folders, save MP4 through the native Windows dialog, and render Japanese lyrics with a suitable fallback font.
+
+**One-time transition for existing users:** If an earlier Phrasync version is installed, manually uninstall it and install v0.4.3 from Microsoft Store. This is recommended once to clear any stale WebView2 data from the previous installation. Back up important projects before uninstalling. Future Store updates can be checked and installed from Settings → App updates without manually visiting the Store listing.
+
+The Store's in-app installation path cannot be exercised end-to-end in this portable preview; it must be verified with a Store-installed package when a subsequent release becomes available.
+
+---
+
+# Phrasync v0.4.2
+
+This update fixes Windows desktop video export.
+
+- Choose the output folder before starting an MP4 render. The rendered file is written directly there.
+- Open the renders folder from the export window, including the folder containing a completed video.
+- Download MP4 now opens a native Save As dialog in the Windows app; the browser version keeps a normal download link.
+- Export controls are available in English and Italian.
+- The built-in Phrasync renders folder has a dedicated button even when a different export folder is selected.
+- Japanese lyrics now use a Japanese-capable font only where the selected font lacks glyphs; a freely licensed fallback font is bundled for PCs without Japanese system fonts.
+
+---
+
+# Phrasync v0.3.0
+
+Released 2026-09-08.
+
+This release makes the Store desktop experience substantially lighter and fixes live model-download reporting.
+
+## Highlights
+
+- Whisper model progress now counts Hugging Face's active `.incomplete` payload, so percentage, transferred size, speed, and ETA advance throughout the first download.
+- The Windows WebView2 host explicitly enables GPU compositing and GPU canvas rasterization.
+- Expensive preview canvases are capped at 30 FPS during playback and 12 FPS while idle, independently from full-quality video export.
+- High-DPI preview and timeline buffers are constrained inside the desktop host, eliminating unnecessary multi-million-pixel redraws.
+- The timeline no longer repaints continuously while playback is stopped, and hidden windows pause preview work.
+- Costly translucent backdrop blurs are replaced with opaque desktop surfaces while preserving the same visual hierarchy.
+- The Phrasync logo is now embedded in the Windows executable for the window, taskbar, and application switcher.
+
+## Verified for this release
+
+- The active Hugging Face cache layout is covered by an automated progress-counting regression test.
+- The packaged executable and Microsoft Store MSIX are tested separately from the browser development build.
+- The Windows package uses the existing Store identity and version **0.3.0.0**.
+
+---
+
+# Phrasync v0.2.0
+
+Released 2026-09-08.
+
+This release turns the Store build into a native Windows experience and makes first-run AI setup transparent.
+
+## Highlights
+
+- Phrasync now opens in its own Windows WebView2 application window, with no Command Prompt and no browser tab.
+- The first-run overlay explains that each Whisper model is downloaded once and stored locally.
+- Model downloads now show percentage, transferred size, and estimated time remaining before transcription begins.
+- English is the default interface language; users can switch between English and Italian from the onboarding overlay or the main toolbar.
+- NVIDIA CUDA acceleration is detected automatically, with an explicit GPU/CPU status shown in the interface.
+- CUDA 12 cuBLAS and cuDNN 9 runtime libraries are included in the Windows Store package so compatible NVIDIA systems do not require a separate CUDA Toolkit installation.
+
+## Verified for this release
+
+- The packaged GUI executable opens a native window titled **Phrasync** and does not create a console window.
+- The packaged health check reports Phrasync 0.2.0, Faster-Whisper available, CUDA available, and one NVIDIA device on an RTX 3090 test system.
+- English and Italian onboarding layouts were visually verified at 1440 × 1000.
+- The complete suite reports **56 passing tests**.
+- The Microsoft Store MSIX uses the existing product identity and version **0.2.0.0**.
+
+---
+
 # Phrasync v0.1.1
 
 Released 2026-08-27.

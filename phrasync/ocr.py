@@ -7,6 +7,7 @@ import subprocess
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from .processes import background_flags
 
 
 class OCRUnavailable(RuntimeError):
@@ -75,7 +76,7 @@ def _tesseract_ocr(path: Path, language: str = "eng") -> dict[str, Any] | None:
         return None
     language = "eng" if not language or language == "auto" else language
     command = [executable, str(path), "stdout", "-l", language, "--psm", "6", "tsv"]
-    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, creationflags=background_flags())
     if process.returncode != 0:
         message = process.stderr.decode("utf-8", errors="replace").strip()
         raise RuntimeError(f"Tesseract failed: {message}")

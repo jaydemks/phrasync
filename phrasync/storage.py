@@ -6,7 +6,9 @@ import shutil
 import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import BinaryIO
+from typing import AsyncIterable, BinaryIO
+
+from starlette.concurrency import run_in_threadpool
 
 from .config import (
     MAX_UPLOAD_BYTES,
@@ -140,6 +142,36 @@ def get_asset(asset_id: str | None, expected_kind: str | None = None) -> Asset |
     if expected_kind and asset.kind != expected_kind:
         raise ValueError(f"Asset {safe_id} is {asset.kind}, expected {expected_kind}")
     return asset
+
+
+async def store_chunks(kind: str, filename: str, chunks: AsyncIterable[bytes], expected_size: int | None = None) -> Asset:
+    """Write the request directly to its destination, without a second spool file."""
+    clean_name = sanitize_name(filename)
+    ext = validate_extension(kind, clean_name)
+    if expected_size is not None and (expected_size < 0 or expected_size > MAX_UPLOAD_BYTES):
+        raise ValueError(f"Upload exceeds the configured {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit")
+    asset_id = f"{uuid.uuid4().hex}{ext}"
+    destination = UPLOADS_DIR / asset_id
+    metadata = _metadata_path(asset_id)
+    size = 0
+    try:
+        with destination.open("wb") as output:
+            async for chunk in chunks:
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    raise ValueError(f"Upload exceeds the configured {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit")
+                await run_in_threadpool(output.write, chunk)
+        if expected_size is not None and size != expected_size:
+            raise ValueError("Upload was interrupted; please import the file again")
+        if not size:
+            raise ValueError("The uploaded file is empty")
+        asset = Asset(asset_id, kind, clean_name, str(destination), size, ext)
+        await run_in_threadpool(metadata.write_text, json.dumps(asdict(asset), indent=2), encoding="utf-8")
+        return asset
+    except BaseException:
+        destination.unlink(missing_ok=True)
+        metadata.unlink(missing_ok=True)
+        raise
 
 
 def get_av_asset(asset_id: str | None) -> Asset | None:

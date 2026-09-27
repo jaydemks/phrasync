@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import JOBS_DIR, RENDERS_DIR
+from .diagnostics import log_event, log_exception
 from .align import align_cues, alignment_stats
 from .audio_analysis import analyze_audio
 from .qa import postflight_render, preflight_project
@@ -44,6 +45,13 @@ class Job:
     postflight: dict[str, Any] | None = None
     request: dict[str, Any] | None = None
     cancel_requested: bool = False
+    phase: str | None = None
+    downloaded_bytes: int | None = None
+    transferred_bytes: int | None = None
+    reconstructed_bytes: int | None = None
+    total_bytes: int | None = None
+    eta_seconds: int | None = None
+    device: str | None = None
 
     def public(self) -> dict[str, Any]:
         data = asdict(self)
@@ -63,12 +71,13 @@ class JobManager:
             json.dumps(job.public(), indent=2), encoding="utf-8"
         )
 
-    def create_render(self, project: dict[str, Any], title: str = "phrasync_export") -> Job:
+    def create_render(self, project: dict[str, Any], title: str = "phrasync_export", output_dir: Path | None = None) -> Job:
         job = Job(id=uuid.uuid4().hex, kind="render")
+        log_event("info", "render", f"Queued job {job.id[:8]}")
         with self.lock:
             self.jobs[job.id] = job
             self._save(job)
-        self.executor.submit(self._run_render, job.id, project, title)
+        self.executor.submit(self._run_render, job.id, project, title, output_dir or RENDERS_DIR)
         return job
 
     def create_transcription(
@@ -93,6 +102,7 @@ class JobManager:
                 "languageSpans": list(language_spans or []),
             },
         )
+        log_event("info", "transcription", f"Queued job {job.id[:8]}, model {model}, language {language}")
         with self.lock:
             self.jobs[job.id] = job
             self._save(job)
@@ -126,10 +136,28 @@ class JobManager:
             with self.lock:
                 return job.cancel_requested
 
-        def update(value: float, message: str) -> None:
+        def update(value: float, message: str, details: dict[str, Any] | None = None) -> None:
             with self.lock:
                 job.progress = max(job.progress, min(0.84, 0.04 + float(value) * 0.80))
                 job.message = message
+                if details:
+                    if "phase" in details:
+                        job.phase = details["phase"]
+                    if "downloadedBytes" in details:
+                        job.downloaded_bytes = details["downloadedBytes"]
+                    if "transferredBytes" in details:
+                        job.transferred_bytes = details["transferredBytes"]
+                    if "reconstructedBytes" in details:
+                        job.reconstructed_bytes = details["reconstructedBytes"]
+                    if "totalBytes" in details:
+                        job.total_bytes = details["totalBytes"]
+                    if "etaSeconds" in details:
+                        job.eta_seconds = details["etaSeconds"]
+                    if "device" in details:
+                        job.device = details["device"]
+                elif job.phase in {"model-download", "model-load"}:
+                    job.phase = "transcribing"
+                    job.eta_seconds = None
                 self._save(job)
 
         try:
@@ -157,6 +185,7 @@ class JobManager:
                 with self.lock:
                     job.progress = 0.88
                     job.message = "Analysing audio for alignment"
+                    job.phase = "aligning"
                     self._save(job)
                 analysis = analyze_audio(path, True)
                 if cancelled():
@@ -171,7 +200,9 @@ class JobManager:
                 job.state = "complete"
                 job.progress = 1.0
                 job.message = "Transcription complete"
+                job.phase = "complete"
                 self._save(job)
+            log_event("info", "transcription", f"Completed job {job.id[:8]} on {job.device or 'unknown device'}")
         except TranscriptionCancelled:
             with self.lock:
                 job.state = "cancelled"
@@ -179,6 +210,7 @@ class JobManager:
                 job.error = None
                 self._save(job)
         except Exception as exc:
+            log_exception("transcription", exc)
             with self.lock:
                 job.state = "cancelled" if job.cancel_requested else "failed"
                 job.error = None if job.cancel_requested else str(exc)
@@ -186,7 +218,7 @@ class JobManager:
                 job.message = "Transcription cancelled" if job.cancel_requested else "Transcription failed"
                 self._save(job)
 
-    def _run_render(self, job_id: str, project: dict[str, Any], title: str) -> None:
+    def _run_render(self, job_id: str, project: dict[str, Any], title: str, output_dir: Path) -> None:
         job = self.get(job_id)
         if not job:
             return
@@ -200,6 +232,7 @@ class JobManager:
                     job.progress = 1.0
                     job.message = "Preflight failed"
                     self._save(job)
+                    log_event("error", "render", f"Job {job.id[:8]} failed preflight")
                     return
                 job.state = "running"
                 job.progress = 0.01
@@ -207,7 +240,7 @@ class JobManager:
                 self._save(job)
 
             output_name = f"{_safe_title(title)}_{job.id[:8]}.mp4"
-            output_path = RENDERS_DIR / output_name
+            output_path = output_dir / output_name
 
             def update(value: float, message: str) -> None:
                 with self.lock:
@@ -235,7 +268,9 @@ class JobManager:
                     job.error = "Post-render critic found a blocking error."
                     job.message = "Postflight failed"
                 self._save(job)
+            log_event("info" if postflight.ok else "error", "render", f"Job {job.id[:8]} {'complete' if postflight.ok else 'failed postflight'}")
         except Exception as exc:
+            log_exception("render", exc)
             with self.lock:
                 job.state = "cancelled" if job.cancel_requested else "failed"
                 job.error = str(exc)

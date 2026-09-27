@@ -86,7 +86,7 @@ function buildCueDOM(cue, spec, signature) {
 function renderLyric(force = false) {
   const spec = activePreset();
   const time = lyricTime();
-  const active = K().activeCues(project.cues, time, lyricIsIn3D() ? preset3D(spec) : spec);
+  const active = K().activeCues(project.cues, time, lyricIsIn3D() ? preset3D(spec, true) : spec);
 
   if (force || els.lyricDisplay.dataset.preset !== project.style.preset) {
     els.lyricDisplay.className = "lyric-display";
@@ -138,6 +138,9 @@ function lyricStyleFor3D() {
     maxWidth: style.maxWidth,
     offset3DX: style.offset3DX,
     offset3DY: style.offset3DY,
+    text3DPitch: style.text3DPitch,
+    text3DYaw: style.text3DYaw,
+    text3DRoll: style.text3DRoll,
     uppercase: style.uppercase
   };
 }
@@ -155,7 +158,7 @@ function lyricIsIn3D() {
  * near the end of its 0.55 s arrival, while a fixed one-second tail removed it
  * before it passed the lens at low scene speeds.
  */
-function preset3D(spec) {
+function preset3D(spec, preload = false) {
   const speed = Math.max(0.1,
     sceneSpeedFor(project.background, project.background.visualIntensity));
   // BOARD_NEAR is 8 in the renderer; allow the board to clear the 1.2-unit
@@ -163,7 +166,10 @@ function preset3D(spec) {
   // short per-word exit so consecutive words never stack on the same board.
   const passageTail = (8 - 1.2) / speed + 0.15;
   const tail = spec.hold === "word" ? spec.tail : Math.max(spec.tail, passageTail);
-  return { ...spec, lead: Math.max(spec.lead, 0.6), tail };
+  // Allocate boards early to spread mesh creation over several frames, but
+  // keep visible text on the user's word timing. Geometry preloading must not
+  // turn the first sung word into a 600 ms anticipation on every phrase.
+  return { ...spec, lead: preload ? Math.max(spec.lead, 0.6) : spec.lead, tail };
 }
 
 function updateLyricFrame(time) {

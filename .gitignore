@@ -6,7 +6,10 @@ workspace/
 .phrasync/
 dist/
 build/
+release/
 *.spec
+/qa/
+/qa_out/
 .env
 .env.*
 !.env.example

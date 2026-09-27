@@ -1,5 +1,4 @@
 "use strict";
-
 async function handleAudioFile(file) {
   if (!file) return;
   setAssetStatus(`Uploading ${file.name}…`);
@@ -120,12 +119,17 @@ async function handleFontFile(file) {
 }
 
 function updateTranscriptionProgress(job) {
-  const percent = Math.max(0, Math.min(100, Math.round(Number(job.progress || 0) * 100)));
+  const downloading = job.phase === "model-download";
+  const unknown = downloading && !(job.total_bytes > 0);
+  const ratio = downloading ? (job.total_bytes > 0 ? job.downloaded_bytes / job.total_bytes : 0) : Number(job.progress || 0);
+  const percent = Math.max(0, Math.min(downloading ? 99 : 100, Math.round(ratio * 100)));
   els.transcriptionProgress.hidden = false;
-  els.transcriptionMessage.textContent = job.message || "Transcribing…";
-  els.transcriptionPercent.value = `${percent}%`;
+  els.transcriptionMessage.textContent = formatTranscriptionJob(job);
+  els.transcriptionPercent.value = unknown ? "…" : `${percent}%`;
   els.transcriptionProgressBar.style.width = `${percent}%`;
   els.transcriptionTrack.setAttribute("aria-valuenow", String(percent));
+  els.transcriptionTrack.classList.toggle("indeterminate", unknown);
+  if (unknown) els.transcriptionTrack.removeAttribute("aria-valuenow");
 }
 
 function finishTranscriptionControls() {
@@ -133,7 +137,7 @@ function finishTranscriptionControls() {
   transcriptionPollTimer = null;
   currentTranscriptionJob = null;
   els.transcribeButton.disabled = false;
-  els.transcribeButton.textContent = MODE_COPY[project.mode]?.transcribe || "Transcribe locally";
+  els.transcribeButton.textContent = t(MODE_COPY[project.mode]?.transcribe || "Transcribe locally");
   els.cancelTranscription.disabled = false;
   els.cancelTranscription.hidden = true;
 }
@@ -200,11 +204,13 @@ async function transcribeSong() {
   }
   if (currentTranscriptionJob) return;
   els.transcribeButton.disabled = true;
-  els.transcribeButton.textContent = "Transcribing locally…";
+  els.transcribeButton.textContent = t("Transcribing locally…");
   els.cancelTranscription.hidden = false;
   els.transcriptionProgress.hidden = false;
   updateTranscriptionProgress({ progress: 0, message: "Creating transcription job" });
-  setAssetStatus(`Whisper is transcribing the ${project.sourceKind === "video" ? "video" : "audio"} and timing cues. The first model download can take a while.`);
+  setAssetStatus(document.documentElement.lang === "it"
+    ? "Whisper preparerà la trascrizione e i tempi. Al primo utilizzo, il download del modello mostrerà percentuale e tempo rimanente."
+    : `Whisper is preparing the ${project.sourceKind === "video" ? "video" : "audio"} transcription and timing. The first model download will show progress and estimated time remaining.`);
   try {
     const job = await api("/api/transcriptions", {
       method: "POST",
@@ -292,92 +298,23 @@ async function runCritic() {
   }
 }
 
-function resetRenderModal() {
-  els.renderPercent.textContent = "0%";
-  els.renderProgress.style.width = "0%";
-  els.renderMessage.textContent = "Preparing critic pass…";
-  els.renderResult.hidden = true;
-  els.renderError.hidden = true;
-  els.cancelRender.hidden = false;
-  els.renderClose.disabled = false;
-}
-
-async function startRender() {
-  resetRenderModal();
-  if (!els.renderDialog.open) els.renderDialog.showModal();
-  try {
-    const exportProject = clone(project);
-    exportProject.__renderOrigin = window.location.origin;
-    const response = await api("/api/render", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: project.title, project: exportProject })
-    });
-    currentRenderJob = response.id;
-    pollRender();
-  } catch (error) {
-    els.renderError.hidden = false;
-    els.renderError.textContent = error.message;
-    els.renderMessage.textContent = "Could not start render.";
-  }
-}
-
-async function pollRender() {
-  clearTimeout(renderPollTimer);
-  if (!currentRenderJob) return;
-  try {
-    const job = await api(`/api/render/${currentRenderJob}`);
-    const percent = Math.round((job.progress || 0) * 100);
-    els.renderPercent.textContent = `${percent}%`;
-    els.renderProgress.style.width = `${percent}%`;
-    els.renderMessage.textContent = job.message || job.state;
-    if (job.state === "complete") {
-      currentRenderJob = null;
-      els.cancelRender.hidden = true;
-      els.renderResult.hidden = false;
-      els.downloadRender.href = job.result.downloadUrl;
-      els.renderMeta.textContent = `${job.result.width} × ${job.result.height} · ${job.result.fps} fps · ${job.result.duration.toFixed(2)}s · rendered in ${job.result.elapsed.toFixed(1)}s`;
-      if (job.postflight && !job.postflight.ok) showReport(job.postflight, "Post-render critic");
-      toast("MP4 render complete.", "success");
-      return;
-    }
-    if (job.state === "failed" || job.state === "cancelled") {
-      currentRenderJob = null;
-      els.cancelRender.hidden = true;
-      els.renderError.hidden = false;
-      els.renderError.textContent = job.error || `Render ${job.state}.`;
-      if (job.preflight && !job.preflight.ok) showReport(job.preflight, "Blocking preflight report");
-      return;
-    }
-    renderPollTimer = setTimeout(pollRender, 700);
-  } catch (error) {
-    els.renderError.hidden = false;
-    els.renderError.textContent = error.message;
-    renderPollTimer = setTimeout(pollRender, 1400);
-  }
-}
-
-async function cancelRender() {
-  if (!currentRenderJob) return;
-  try {
-    await api(`/api/render/${currentRenderJob}/cancel`, { method: "POST" });
-    els.renderMessage.textContent = "Cancellation requested…";
-  } catch (error) {
-    toast(error.message, "error");
-  }
-}
-
 async function checkHealth() {
   try {
     health = await api("/api/health");
     const coreOk = health.ffmpeg.available;
     els.engineStatus.classList.toggle("ok", coreOk);
     els.engineStatus.classList.toggle("error", !coreOk);
-    $("span", els.engineStatus).textContent = coreOk ? "Local engine ready" : "FFmpeg missing";
+    $("span", els.engineStatus).textContent = t(coreOk ? "Local engine ready" : "FFmpeg missing");
     if (health.transcription.available) {
-      els.transcriptionNote.textContent = `Local Whisper ready${health.transcription.cuda ? " · NVIDIA acceleration detected" : " · CPU mode"}. Auto follows a song that changes language, line by line. First use downloads the model.`;
+      const gpuReady = Boolean(health.transcription.cuda);
+      els.transcriptionNote.textContent = document.documentElement.lang === "it"
+        ? `Whisper locale pronto · ${gpuReady ? "accelerazione NVIDIA CUDA attiva" : "modalità CPU"}. La prima trascrizione scarica il modello mostrando avanzamento e tempo stimato.`
+        : `Local Whisper ready · ${gpuReady ? "NVIDIA CUDA acceleration active" : "CPU mode"}. The first transcription downloads the model with progress and estimated time remaining.`;
+      els.engineStatus.title = health.transcription.gpu?.reason || t("Local engine status");
     } else {
-      els.transcriptionNote.textContent = "AI pack not installed. Run install_ai script, then restart Phrasync.";
+      els.transcriptionNote.textContent = document.documentElement.lang === "it"
+        ? "Componenti AI non installati. Reinstalla Phrasync o esegui lo script install_ai, quindi riavvia."
+        : "AI pack not installed. Reinstall Phrasync or run the install_ai script, then restart.";
     }
     if (!health.ocr.available) setAssetStatus("OCR engine not installed. Run the AI installer to enable it.", "error");
   } catch (error) {

@@ -39,8 +39,8 @@ def chrome_path() -> Path:
 
 
 class DevTools:
-    def __init__(self, url: str):
-        self.socket = connect(url, origin="http://localhost:9225")
+    def __init__(self, url: str, origin: str | None = "http://localhost:9225"):
+        self.socket = connect(url, origin=origin)
         self.counter = 0
 
     def call(self, method: str, params: dict | None = None) -> dict:
@@ -60,6 +60,8 @@ class DevTools:
             "Runtime.evaluate",
             {"expression": expression, "awaitPromise": True, "returnByValue": True},
         )
+        if result.get("exceptionDetails"):
+            raise RuntimeError(json.dumps(result["exceptionDetails"]))
         return result.get("result", {}).get("value")
 
     def shot(self, selector: str) -> Image.Image:
@@ -94,6 +96,8 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=Path("qa_out/scene.png"))
     parser.add_argument("--kits", default="japan,italy,china,usa")
     parser.add_argument("--direction", default="forward")
+    parser.add_argument("--art-style", default="cinematic")
+    parser.add_argument("--secondary-motion", default="none")
     parser.add_argument("--visual", default="scene3d", help="scene3d (WebGL) or scene (flat)")
     parser.add_argument("--t", type=float, default=6.0, help="scene time to freeze at")
     parser.add_argument("--tile", type=int, default=440, help="tile width in the sheet")
@@ -139,6 +143,10 @@ def main() -> int:
                 time.sleep(2.6)
             if not devtools.eval("Boolean(window.VFSceneDraw) && Boolean(window.VFSceneGL)"):
                 raise SystemExit("The scene engine did not load")
+            devtools.eval("document.querySelectorAll('dialog[open]').forEach(d => d.close())")
+            devtools.eval("(() => { for (const [id, value] of " + json.dumps([
+                ['sceneArtStyle', args.art_style], ['secondaryMotion', args.secondary_motion]
+            ]) + ") { const el = document.getElementById(id); el.value = value; el.dispatchEvent(new Event('input')); el.dispatchEvent(new Event('change')); } })()")
 
             # Drive the real controls: the app's own animation loop owns the
             # canvas, so painting a one-off frame would be overwritten at once.

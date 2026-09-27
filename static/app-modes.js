@@ -11,7 +11,7 @@ const MODE_COPY = {
   },
   subtitles: {
     description: "Transcribe speech and burn readable subtitles directly into audio or video.",
-    source: "Add video or audio", hint: "MP4/WebM video · WAV, MP3, M4A…",
+    source: "Add video or audio", hint: "MP4/WebM · up to 16 GB · long-form video",
     transcribe: "Transcribe media locally", section: "Local speech transcription",
     panel: "Subtitles", bulk: "Paste or import transcript", placeholder: "One subtitle cue per line…",
     importLabel: "Import subtitles", preview: "Add media or scrub the timeline to preview",
@@ -65,9 +65,9 @@ async function assertBrowserPreviewableVideo(file) {
   probe.muted = true;
   try {
     await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("Video preview check timed out.")), 8000);
+      const timeout = setTimeout(() => reject(new Error("Video preview check timed out.")), 30000);
       const finish = callback => () => { clearTimeout(timeout); callback(); };
-      probe.addEventListener("canplay", finish(resolve), { once: true });
+      probe.addEventListener("loadedmetadata", finish(resolve), { once: true });
       probe.addEventListener("error", finish(() => reject(new Error(
         "This browser cannot decode the video. Use MP4 with H.264/AAC or WebM with VP9/Opus."
       ))), { once: true });
@@ -117,20 +117,20 @@ function applyModeUI() {
   els.root.dataset.projectMode = mode;
   $$('button', els.projectMode).forEach(button =>
     button.classList.toggle("active", button.dataset.value === mode));
-  els.modeDescription.textContent = copy.description;
-  els.audioName.textContent = project.audio?.name || copy.source;
-  els.audioHint.textContent = copy.hint;
+  els.modeDescription.textContent = t(copy.description);
+  els.audioName.textContent = project.audio?.name || t(copy.source);
+  els.audioHint.textContent = t(copy.hint);
   els.audioInput.accept = mode === "subtitles"
     ? "audio/*,video/mp4,video/webm,.wav,.mp3,.m4a,.aac,.flac,.ogg,.opus,.mp4,.webm"
     : "audio/*,.wav,.mp3,.m4a,.aac,.flac,.ogg,.opus";
-  els.transcribeButton.textContent = copy.transcribe;
-  els.transcriptionSectionName.textContent = copy.section;
-  els.cuePanelTitle.textContent = copy.panel;
-  els.bulkLyricsLabel.textContent = copy.bulk;
-  els.bulkLyrics.placeholder = copy.placeholder;
-  els.lyricsPickTitle.textContent = copy.importLabel;
-  els.noAudioHint.textContent = copy.preview;
-  els.renderTitle.textContent = copy.render;
+  els.transcribeButton.textContent = t(copy.transcribe);
+  els.transcriptionSectionName.textContent = t(copy.section);
+  els.cuePanelTitle.textContent = t(copy.panel);
+  els.bulkLyricsLabel.textContent = t(copy.bulk);
+  els.bulkLyrics.placeholder = t(copy.placeholder);
+  els.lyricsPickTitle.textContent = t(copy.importLabel);
+  els.noAudioHint.textContent = t(copy.preview);
+  els.renderTitle.textContent = t(copy.render);
 }
 
 function resolvedEnvironmentAt(t) {

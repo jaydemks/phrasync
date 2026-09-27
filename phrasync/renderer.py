@@ -12,6 +12,7 @@ import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 from . import kinetic
+from .processes import background_flags
 from .media import audio_envelope, decode_audio_frame, ffmpeg_exe, probe_duration
 from .storage import Asset, get_asset, get_av_asset
 from .render_backgrounds import DynamicBackground
@@ -68,6 +69,7 @@ class VideoFrameSource:
             ],
             stdout=subprocess.PIPE,
             stderr=self.stderr,
+            creationflags=background_flags(),
         )
 
     def read_sized(self, width: int, height: int) -> Image.Image:
@@ -280,6 +282,7 @@ def render_project(
                     [ffmpeg_exe(), "-v", "error", "-r", str(ctx.fps), "-f", "h264",
                      "-i", str(encoded), "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    creationflags=background_flags(),
                 )
                 command = [
                     ffmpeg_exe(), "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
@@ -296,7 +299,7 @@ def render_project(
                     "-t", f"{ctx.duration:.6f}", "-movflags", "+faststart", str(temporary),
                 ])
                 encoder = subprocess.Popen(
-                    command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+                    command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, creationflags=background_flags()
                 )
                 assert decoder.stdout is not None and encoder.stdin is not None
                 frame_size = ctx.width * ctx.height * 3
@@ -344,7 +347,7 @@ def render_project(
                 ])
                 if progress:
                     progress(0.90, "Muxing WebGL video and audio")
-                completed = subprocess.run(command, capture_output=True, text=True)
+                completed = subprocess.run(command, capture_output=True, text=True, creationflags=background_flags())
                 if completed.returncode != 0:
                     raise RuntimeError(
                         f"FFmpeg WebGL mux failed: {completed.stderr.strip() or 'unknown error'}"
@@ -408,7 +411,7 @@ def render_project(
             str(temporary),
         ]
     )
-    encoder = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    encoder = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, creationflags=background_flags())
     assert encoder.stdin is not None
     try:
         for frame_index in range(ctx.frame_count):

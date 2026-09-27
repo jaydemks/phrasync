@@ -128,7 +128,20 @@ export function updateEnvironment(THREE, environment, context) {
   const { scene, sky, ground, camera, ambient, key, rim, travelLight, t, state } = context;
   if (!environment || !sky) return;
   const palette = blendedPalette(THREE, state);
-  paintSky(environment, palette);
+  const signature = [state.daytime, state.nextDaytime, state.season, state.nextSeason,
+    Math.round((state.dayMix || 0) * 120), Math.round((state.seasonMix || 0) * 120)].join(':');
+  if (signature !== environment.signature) {
+    paintSky(environment, palette);
+    environment.signature = signature;
+    if (!environment.foliageMaterials) {
+      const materials = new Set();
+      scene.traverse(object => {
+        if (object.material?.userData?.environmentRole === 'foliage') materials.add(object.material);
+      });
+      environment.foliageMaterials = [...materials];
+    }
+    for (const material of environment.foliageMaterials) material.color.copy(palette.foliage);
+  }
   if (sky.children[0].material.map !== environment.skyTexture) {
     sky.children[0].material.map?.dispose();
     sky.children[0].material.map = environment.skyTexture;
@@ -151,16 +164,11 @@ export function updateEnvironment(THREE, environment, context) {
     updateFlakes(environment, camera, t, leaves);
   }
 
-  const fogRange = { clear: [30, 260], rain: [18, 170], snow: [16, 150], fog: [7, 78], storm: [9, 105], leaves: [22, 205] }[weather];
+  const fogRange = { clear: [30, 260], rain: [18, 170], snow: [16, 150], fog: [7, 78], storm: [9, 105], leaves: [22, 205] }[weather] || [30, 260];
   scene.fog.color.copy(palette.fog);
   scene.fog.near = fogRange[0]; scene.fog.far = fogRange[1];
   scene.background.copy(palette.fog);
   ground.material.color.copy(palette.ground);
-  scene.traverse(object => {
-    if (object.material?.userData?.environmentRole === "foliage") {
-      object.material.color.copy(palette.foliage);
-    }
-  });
 
   const flashWave = storm ? Math.max(0, Math.sin(t * 2.73 + 1.4) - 0.965) / 0.035 : 0;
   const flash = Math.pow(Math.min(1, flashWave), 3);

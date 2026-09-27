@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 APP_NAME = "Phrasync"
-APP_VERSION = "0.1.1"
+APP_VERSION = "0.4.3"
 LEGACY_PREFIX = "VERSEFRAME"  # the app shipped under this name before Phrasync
 
 
@@ -51,7 +51,7 @@ JOBS_DIR = WORKSPACE / "jobs"
 PROJECTS_DIR = WORKSPACE / "projects"
 TMP_DIR = WORKSPACE / "tmp"
 
-MAX_UPLOAD_BYTES = int(_env("MAX_UPLOAD_MB", "2048")) * 1024 * 1024
+MAX_UPLOAD_BYTES = int(_env("MAX_UPLOAD_MB", "16384")) * 1024 * 1024
 SUPPORTED_AUDIO = {".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus"}
 SUPPORTED_IMAGE = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 SUPPORTED_VIDEO = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}

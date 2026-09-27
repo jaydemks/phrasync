@@ -195,6 +195,13 @@ def word_state(
     cue_start = float(cue["start"])
     cue_end = float(cue["end"])
     pending = spec.pending_alpha
+    # Match the browser: geometry and animation may be prepared early, but a
+    # phrase cannot become readable before its first timed word is sung.
+    first_timed = next((item for item in (cue.get("words") or [])
+                        if str(item.get("text", "")).strip()), None)
+    phrase_onset = max(cue_start, float(first_timed.get("start", cue_start)) if first_timed else cue_start)
+    if t < phrase_onset or (spec.hold == "word" and t < start):
+        return HIDDEN
 
     # Presets with a pending tint lay the whole line out from the cue start, so
     # the phrase stays optically centred while words light up one at a time.

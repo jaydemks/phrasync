@@ -248,6 +248,13 @@
     const start = word.start;
     const end = Math.max(start + 0.06, word.end);
     const pending = spec.pendingAlpha || 0;
+    // Allocate a phrase ahead of time, but never show its first glyph before
+    // the first timed word. Pending-tint presets used to bypass even a zero
+    // lead, while other presets exposed the phrase during their entry motion.
+    const firstTimed = (cue.words || []).find(item => String(item.text || "").trim());
+    const phraseOnset = Math.max(Number(cue.start) || 0,
+      Number(firstTimed?.start ?? cue.start) || 0);
+    if (t < phraseOnset || (spec.hold === "word" && t < start)) return HIDDEN;
     // Presets with a pending tint lay the whole line out from the cue start, so
     // the phrase stays optically centred while words light up one at a time.
     const appear = pending > 0 ? Math.min(cue.start - 0.05, start - spec.lead) : start - spec.lead;

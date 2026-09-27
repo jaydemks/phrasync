@@ -1,10 +1,76 @@
 "use strict";
 
-function renderCueList() {
+const CUE_PAGE_SIZE = 100;
+let cueListPage = 0;
+let cueListSelection = null;
+
+function cueListText(en, it) {
+  return document.documentElement.lang === "it" ? it : en;
+}
+
+function revealCueInList(id) {
+  const index = project.cues.findIndex(cue => cue.id === id);
+  if (index < 0) return;
+  const page = Math.floor(index / CUE_PAGE_SIZE);
+  if (page !== cueListPage) renderCueList({ page });
+  const card = [...els.cueList.querySelectorAll(".cue-card")].find(item => item.dataset.id === id);
+  card?.scrollIntoView({ block: "nearest" });
+}
+
+function cuePager(pageCount) {
+  const nav = document.createElement("nav");
+  nav.className = "timeline-tools cue-pagination";
+  nav.setAttribute("aria-label", cueListText("Cue pages", "Pagine delle frasi"));
+  Object.assign(nav.style, { position: "sticky", top: "0", zIndex: "2", flexWrap: "wrap",
+    margin: "0 0 8px", padding: "8px 0", background: "var(--panel)" });
+  const button = (label, action, disabled = false) => {
+    const el = document.createElement("button");
+    el.type = "button"; el.textContent = label; el.disabled = disabled;
+    el.addEventListener("click", action); nav.append(el);
+  };
+  const go = page => { renderCueList({ page }); els.cueList.scrollTop = 0; };
+  button(cueListText("Previous", "Precedente"), () => go(cueListPage - 1), cueListPage === 0);
+  const label = document.createElement("span");
+  label.textContent = `${cueListText("Page", "Pagina")} ${cueListPage + 1} / ${pageCount}`;
+  label.setAttribute("aria-live", "polite");
+  Object.assign(label.style, { alignSelf: "center", fontSize: "11px" });
+  nav.append(label);
+  button(cueListText("Next", "Successiva"), () => go(cueListPage + 1), cueListPage === pageCount - 1);
+  const jump = document.createElement("input");
+  jump.type = "number"; jump.min = "1"; jump.max = String(project.cues.length); jump.step = "1";
+  jump.placeholder = cueListText("Cue #", "Frase n.");
+  jump.setAttribute("aria-label", cueListText("Go to cue number", "Vai alla frase numero"));
+  jump.style.width = "85px";
+  const jumpTo = () => {
+    if (!jump.value) return;
+    const index = Math.min(project.cues.length - 1, Math.max(0, Math.trunc(Number(jump.value)) - 1));
+    if (!Number.isFinite(index)) return;
+    selectedCueId = project.cues[index].id;
+    selectedWordIndex = 0; tapQueue = [];
+    renderCueList({ page: Math.floor(index / CUE_PAGE_SIZE) });
+    updateWordLabel(); revealCueInList(selectedCueId);
+  };
+  jump.addEventListener("change", jumpTo);
+  jump.addEventListener("keydown", event => { if (event.key === "Enter") jumpTo(); });
+  nav.append(jump);
+  button(cueListText("Show selected", "Mostra selezionata"), () => revealCueInList(selectedCueId), !selectedCueId);
+  return nav;
+}
+
+function renderCueList(options = {}) {
   normalizeCues();
+  const pageCount = Math.max(1, Math.ceil(project.cues.length / CUE_PAGE_SIZE));
+  const selectedIndex = project.cues.findIndex(cue => cue.id === selectedCueId);
+  if (Number.isInteger(options.page)) cueListPage = options.page;
+  else if (selectedCueId !== cueListSelection && selectedIndex >= 0) cueListPage = Math.floor(selectedIndex / CUE_PAGE_SIZE);
+  cueListSelection = selectedCueId;
+  cueListPage = Math.max(0, Math.min(pageCount - 1, cueListPage));
   els.cueList.textContent = "";
+  if (pageCount > 1) els.cueList.append(cuePager(pageCount));
   const fragment = document.createDocumentFragment();
-  project.cues.forEach((cue, index) => {
+  const pageStart = cueListPage * CUE_PAGE_SIZE;
+  project.cues.slice(pageStart, pageStart + CUE_PAGE_SIZE).forEach((cue, localIndex) => {
+    const index = pageStart + localIndex;
     const card = document.createElement("article");
     card.className = `cue-card${cue.id === currentCueId ? " active" : ""}`
       + (cue.id === selectedCueId ? " selected" : "");
@@ -66,6 +132,9 @@ function renderCueList() {
   els.cueList.append(fragment);
   els.cueCount.textContent = `${project.cues.length} cue${project.cues.length === 1 ? "" : "s"}`;
 }
+document.addEventListener("phrasync-language-change", () => {
+  if (project.cues.length > CUE_PAGE_SIZE) renderCueList({ page: cueListPage });
+});
 async function createCuesFromLines(lines, replace) {
   lines = lines.map(line => line.trim()).filter(Boolean);
   if (!lines.length) return;

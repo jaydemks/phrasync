@@ -3,10 +3,12 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Callable
 
 import numpy as np
+from .processes import background_flags
 
 try:
     import imageio_ffmpeg
@@ -33,6 +35,7 @@ def run_ffmpeg(args: list[str], *, check: bool = True, input_bytes: bytes | None
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=check,
+        creationflags=background_flags(),
     )
 
 
@@ -79,19 +82,30 @@ def audio_envelope(
     frame_count = max(1, int(round(duration * fps)))
     if path is None:
         return np.zeros(frame_count, dtype=np.float32)
-    samples = decode_audio_mono(path, sample_rate=sample_rate)
-    if samples.size == 0:
-        return np.zeros(frame_count, dtype=np.float32)
     per_frame = sample_rate / fps
     envelope = np.zeros(frame_count, dtype=np.float32)
-    for frame in range(frame_count):
-        start = int(frame * per_frame)
-        end = min(samples.size, int((frame + 1) * per_frame))
-        if end > start:
-            chunk = samples[start:end]
-            envelope[frame] = float(np.sqrt(np.mean(chunk * chunk) + 1e-12))
-        if progress and frame % max(1, frame_count // 20) == 0:
-            progress(frame / frame_count)
+    frame_offset = 0
+    # Minute boundaries fall on whole video frames, so each bounded audio
+    # block can be reduced independently without losing frame alignment.
+    blocks = iter_audio_mono(path, sample_rate=sample_rate)
+    try:
+        for samples in blocks:
+            count = min(frame_count - frame_offset, int(np.ceil(samples.size / per_frame)))
+            if count <= 0:
+                break
+            edges = np.minimum(samples.size, np.arange(count + 1, dtype=np.int64) * sample_rate // fps)
+            sums = np.concatenate(([0.0], np.cumsum(samples.astype(np.float64) ** 2)))
+            lengths = np.diff(edges)
+            means = np.divide(sums[edges[1:]] - sums[edges[:-1]], lengths,
+                              out=np.zeros(count), where=lengths > 0)
+            envelope[frame_offset:frame_offset + count] = np.sqrt(means + 1e-12)
+            frame_offset += count
+            if progress:
+                progress(frame_offset / frame_count)
+            if frame_offset >= frame_count:
+                break
+    finally:
+        blocks.close()
     peak = float(np.percentile(envelope, 98)) if envelope.size else 0.0
     if peak > 1e-6:
         envelope = np.clip(envelope / peak, 0.0, 1.25)
@@ -100,6 +114,28 @@ def audio_envelope(
         kernel = np.array([0.1, 0.2, 0.4, 0.2, 0.1], dtype=np.float32)
         envelope = np.convolve(envelope, kernel, mode="same").astype(np.float32)
     return envelope
+
+
+def iter_audio_mono(path: Path, sample_rate: int = 8000):
+    """Stream bounded PCM blocks with the base FFmpeg dependency only."""
+    command = [ffmpeg_exe(), "-v", "error", "-i", str(path), "-vn", "-ac", "1",
+               "-ar", str(sample_rate), "-f", "f32le", "pipe:1"]
+    with tempfile.TemporaryFile() as errors:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=errors, creationflags=background_flags())
+        try:
+            while True:
+                data = process.stdout.read(sample_rate * 60 * 4)
+                if not data:
+                    break
+                yield np.frombuffer(data, dtype=np.float32)
+            if process.wait() != 0:
+                errors.seek(0)
+                raise RuntimeError(errors.read(8192).decode("utf-8", errors="replace"))
+        finally:
+            process.stdout.close()
+            if process.poll() is None:
+                process.terminate()
+            process.wait()
 
 
 def decode_test(path: Path) -> tuple[bool, str]:

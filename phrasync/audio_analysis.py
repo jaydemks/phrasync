@@ -23,7 +23,7 @@ SAMPLE_RATE = 22050
 N_FFT = 1024
 HOP = 256
 PEAKS_PER_SECOND = 60
-ANALYSIS_VERSION = 3
+ANALYSIS_VERSION = 4
 
 
 class AnalysisUnavailable(RuntimeError):
@@ -32,29 +32,47 @@ class AnalysisUnavailable(RuntimeError):
 
 def _decode_mono(path: Path) -> np.ndarray:
     """Decode any supported audio file to mono float32 at SAMPLE_RATE."""
+    return np.concatenate(list(_decode_blocks(path)))
+
+
+def _decode_blocks(path: Path, sample_rate: int = SAMPLE_RATE):
+    """Yield at most one minute of PCM; never retain an entire long video."""
     try:
         import av
     except Exception as exc:  # pragma: no cover - dependency is bundled
         raise AnalysisUnavailable("PyAV is required for audio analysis") from exc
 
     chunks: list[np.ndarray] = []
+    count = 0
+    block_size = sample_rate * 60
+    found = False
     with av.open(str(path)) as container:
         stream = next((s for s in container.streams if s.type == "audio"), None)
         if stream is None:
             raise AnalysisUnavailable("File contains no audio stream")
         stream.thread_type = "AUTO"
         resampler = av.audio.resampler.AudioResampler(
-            format="fltp", layout="mono", rate=SAMPLE_RATE
+            format="fltp", layout="mono", rate=sample_rate
         )
         for frame in container.decode(stream):
             for resampled in resampler.resample(frame):
-                chunks.append(resampled.to_ndarray().reshape(-1).astype(np.float32))
+                samples = resampled.to_ndarray().reshape(-1).astype(np.float32)
+                while samples.size:
+                    take = min(block_size - count, samples.size)
+                    chunks.append(samples[:take])
+                    count += take
+                    samples = samples[take:]
+                    if count == block_size:
+                        found = True
+                        yield np.concatenate(chunks)
+                        chunks, count = [], 0
         for resampled in resampler.resample(None):
             chunks.append(resampled.to_ndarray().reshape(-1).astype(np.float32))
 
-    if not chunks:
+    if chunks:
+        yield np.concatenate(chunks)
+    elif not found:
         raise AnalysisUnavailable("Could not decode any audio samples")
-    return np.concatenate(chunks)
 
 
 def _stft_magnitude(samples: np.ndarray) -> np.ndarray:
@@ -63,10 +81,12 @@ def _stft_magnitude(samples: np.ndarray) -> np.ndarray:
         samples = np.pad(samples, (0, N_FFT - samples.size))
     frame_count = 1 + (samples.size - N_FFT) // HOP
     window = np.hanning(N_FFT).astype(np.float32)
-    indices = np.arange(N_FFT)[None, :] + HOP * np.arange(frame_count)[:, None]
-    frames = samples[indices] * window
-    spectrum = np.fft.rfft(frames, axis=1)
-    return np.abs(spectrum).astype(np.float32)
+    result = np.empty((frame_count, N_FFT // 2 + 1), dtype=np.float32)
+    windows = np.lib.stride_tricks.sliding_window_view(samples, N_FFT)[::HOP]
+    for start in range(0, frame_count, 2048):
+        frames = windows[start:start + 2048] * window
+        result[start:start + len(frames)] = np.abs(np.fft.rfft(frames, axis=1))
+    return result
 
 
 def _flux(magnitude: np.ndarray, low_bin: int, high_bin: int) -> np.ndarray:
@@ -122,7 +142,9 @@ def _estimate_tempo(envelope: np.ndarray, frame_rate: float) -> tuple[float, flo
     if envelope.size < 64:
         return 0.0, 0.0
     centered = envelope - envelope.mean()
-    correlation = np.correlate(centered, centered, mode="full")[centered.size - 1 :]
+    fft_size = 1 << (2 * centered.size - 1).bit_length()
+    spectrum = np.fft.rfft(centered, n=fft_size)
+    correlation = np.fft.irfft(spectrum * spectrum.conj(), n=fft_size)[:centered.size]
     if correlation[0] <= 0:
         return 0.0, 0.0
     correlation = correlation / correlation[0]
@@ -191,7 +213,22 @@ def analyze_audio(path: Path, use_cache: bool = True) -> dict[str, Any]:
         except Exception:
             pass
 
-    samples = _decode_mono(path)
+    # Keep ordinary songs on the original globally normalized analysis path.
+    # Long media is analyzed a minute at a time with compact features retained.
+    from .media import probe_duration
+    media_duration = probe_duration(path)
+    if media_duration is None or media_duration > 600:
+        result = _analyze_long(path)
+    else:
+        result = _analyze_samples(_decode_mono(path))
+    try:
+        cache.write_text(json.dumps(result), encoding="utf-8")
+    except Exception:
+        pass
+    return result
+
+
+def _analyze_samples(samples: np.ndarray) -> dict[str, Any]:
     duration = samples.size / SAMPLE_RATE
     magnitude = _stft_magnitude(samples)
     frame_rate = SAMPLE_RATE / HOP
@@ -232,11 +269,31 @@ def analyze_audio(path: Path, use_cache: bool = True) -> dict[str, Any]:
         "energy": [int(round(float(v) * 255)) for v in rms_frames[::energy_step]],
         "energyRate": float(frame_rate / energy_step),
     }
-    try:
-        cache.write_text(json.dumps(result), encoding="utf-8")
-    except Exception:
-        pass
     return result
+
+
+def _analyze_long(path: Path) -> dict[str, Any]:
+    combined = None
+    offset = 0.0
+    # Fixed 20 Hz energy output avoids drift at chunk boundaries.
+    for samples in _decode_blocks(path):
+        part = _analyze_samples(samples)
+        if combined is None:
+            combined = {**part, "peaks": [], "onsets": [], "onsetStrengths": [],
+                        "percussiveOnsets": [], "energy": [], "energyRate": 20.0,
+                        "bpm": 0.0, "tempoConfidence": 0.0, "beatOffset": 0.0}
+        combined["peaks"].extend(part["peaks"])
+        for key in ("onsets", "percussiveOnsets"):
+            combined[key].extend(round(t + offset, 4) for t in part[key])
+        combined["onsetStrengths"].extend(part["onsetStrengths"])
+        energy = np.asarray(part["energy"])
+        positions = np.arange(max(1, round(part["duration"] * 20))) / 20
+        combined["energy"].extend(np.rint(np.interp(positions, np.arange(len(energy)) / part["energyRate"], energy)).astype(int).tolist())
+        offset += part["duration"]
+    if combined is None:
+        raise AnalysisUnavailable("Could not decode any audio samples")
+    combined["duration"] = offset
+    return combined
 
 
 def beat_times(bpm: float, offset: float, duration: float) -> list[float]:

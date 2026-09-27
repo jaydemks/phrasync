@@ -9,9 +9,12 @@
  */
 import * as THREE from "/static/vendor/three.module.min.js";
 import { createEnvironment, updateEnvironment } from "/static/scene3d-environment.js";
+import { createWorld, updateWorld, sceneryPoint } from "/static/scene3d-world.js";
+import { createExpeditions, updateExpeditions } from "/static/scene3d-expeditions.js";
+import { createOcean, updateOcean, updateOceanCamera } from "/static/scene3d-ocean.js";
 
-const SLOT = 9;          // world units between prop slots
-const VISIBLE_SLOTS = 30; // how far down the corridor we keep geometry alive
+const SLOT = 24;         // reserved landmark plots; context furniture sits between rows
+const VISIBLE_SLOTS = 11; // eleven 24-unit plots match the contextual world's 264-unit cycle
 const PROTOTYPES_PER_SLOT = 4;
 
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -58,6 +61,10 @@ const THEMES = {
 };
 
 const DIRECTIONS = {
+  left: { rise: 0, sway: 0, roll: 0, look: 0 },
+  right: { rise: 0, sway: 0, roll: 0, look: 0 },
+  up: { rise: 0, sway: 0, roll: 0, look: 0 },
+  down: { rise: 0, sway: 0, roll: 0, look: 0 },
   forward: { rise: 0, sway: 0, roll: 0, look: 0 },
   ascend: { rise: 0.9, sway: 0, roll: 0, look: 0.10 },
   dive: { rise: -0.8, sway: 0, roll: 0, look: -0.10 },
@@ -79,8 +86,10 @@ function makeMaterials(theme) {
   foliage.userData.environmentRole = "foliage";
   return {
     dark: solid(0x14101c),
-    stone: solid(0x3a3040),
-    key: solid(theme.key),
+    stone: solid(theme.kit === 'japan' ? 0xb29d7e : theme.kit === 'china' ? 0xc6bb9d : theme.kit === 'italy' ? 0xc6af8b : 0x68737d),
+    roof: solid(theme.kit === 'italy' ? 0xa65a3c : 0x34404a),
+    wood: solid(theme.kit === 'china' ? 0x8e382c : 0x5b4334),
+    key: solid(['japan','china'].includes(theme.kit) ? 0xa94432 : theme.key),
     warm: emissive(theme.warm, 2.1),
     keyGlow: emissive(theme.key, 1.5),
     paper: emissive(0xfff0d0, 1.2),
@@ -155,16 +164,21 @@ const BUILDERS = {
 
   pagoda(m, theme) {
     const group = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 8, 2.4), m.stone);
-    body.position.y = 4; group.add(body);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(4.4, .35, 4.4), m.stone);
+    foot.position.y=.175;group.add(foot);
     for (let i = 0; i < 4; i += 1) {
-      const eave = new THREE.Mesh(new THREE.ConeGeometry(2.6 - i * 0.32, 0.9, 4), m.key);
-      eave.position.y = 2.1 + i * 1.9;
+      const width = 2.8-i*.42, y=.4+i*1.9;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(width,1.2,width),m.wood);
+      body.position.y=y+.6;group.add(body);
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(width*.75,.64,width+.02),m.stone);
+      panel.position.y=y+.62;group.add(panel);
+      const eave = new THREE.Mesh(new THREE.ConeGeometry(3.5-i*.46,.9,4),m.roof);
+      eave.position.y=y+1.45;
       eave.rotation.y = Math.PI / 4;
       group.add(eave);
     }
     const finial = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.12, 1.2, 6), m.warm);
-    finial.position.y = 8.6; group.add(finial);
+    finial.position.y = 8.3; group.add(finial);
     return group;
   },
 
@@ -374,14 +388,15 @@ function makeSky(theme) {
 function makeRidges(theme) {
   const group = new THREE.Group();
   for (let layer = 0; layer < 3; layer += 1) {
-    const random = rng(4200 + layer * 31);
     const points = [];
     const span = 900;
-    const steps = 60;
-    const amp = 40 + layer * 34;
+    const steps = 240;
+    const amp = 20 + layer * 19;
     for (let i = 0; i <= steps; i += 1) {
       const x = -span / 2 + (i / steps) * span;
-      points.push(new THREE.Vector2(x, Math.pow(random(), 0.7) * amp));
+      const h = .52 + .25 * Math.sin(x * .022 + layer * 2)
+        + .14 * Math.sin(x * .041 + layer) + .07 * Math.sin(x * .091);
+      points.push(new THREE.Vector2(x, h * amp));
     }
     const shape = new THREE.Shape();
     shape.moveTo(points[0].x, -60);
@@ -391,7 +406,7 @@ function makeRidges(theme) {
     const colour = new THREE.Color(theme.ridge).lerp(new THREE.Color(theme.fog), layer * 0.3);
     const mesh = new THREE.Mesh(
       new THREE.ShapeGeometry(shape),
-      new THREE.MeshBasicMaterial({ color: colour, depthWrite: false, fog: false })
+      new THREE.MeshBasicMaterial({ color: colour, depthWrite: false, fog: true })
     );
     mesh.userData.parallax = 0.03 - layer * 0.009;
     mesh.userData.depth = layer * 70;
@@ -656,6 +671,7 @@ class Odyssey {
    */
   buildTextOnly() {
     if (this.kit === "__text__") return;
+    this.disposeScene();
     this.kit = "__text__";
     this.theme = null;
     const scene = new THREE.Scene();
@@ -681,9 +697,22 @@ class Odyssey {
 
   build(kitName) {
     if (this.kit === kitName) return;
+    this.disposeScene();
     this.kit = kitName;
-    const theme = THEMES[kitName] || THEMES.japan;
+    const theme = { ...(THEMES[kitName] || THEMES.japan), kit: kitName };
     this.theme = theme;
+
+    if (kitName === "ocean") {
+      this.scene = new THREE.Scene();
+      this.scene.add(new THREE.AmbientLight(0xe2ecff, 1.4));
+      const key = new THREE.DirectionalLight(0xffffff, 2);
+      key.position.set(-3, 8, 4); this.scene.add(key);
+      this.ocean = createOcean(THREE); this.scene.add(this.ocean.group);
+      this.slots = []; this.sky = null; this.ridges = null; this.ground = null;
+      this.waveField = null; this.environment = null; this.expeditions = null;
+      this.textMeshes.clear(); this.textLayer = new THREE.Group();
+      return;
+    }
 
     const scene = new THREE.Scene();
     scene.fog = new THREE.Fog(theme.fog, 26, 250);
@@ -716,6 +745,11 @@ class Odyssey {
     this.ground = ground;
     this.environment = createEnvironment(THREE, theme);
     scene.add(this.environment.group);
+    this.world = createWorld(THREE, theme);
+    this.landmarkStyle = null;
+    scene.add(this.world.group);
+    this.expeditions = createExpeditions(THREE);
+    scene.add(this.expeditions.group);
 
     // Emissive centre line: cheap, and it reads as the road pulling you forward.
     this.laneGroup = new THREE.Group();
@@ -736,9 +770,16 @@ class Odyssey {
     this.slots = [];
     for (let i = 0; i < VISIBLE_SLOTS; i += 1) {
       const holder = new THREE.Group();
+      const terrace = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), materials.stone);
+      terrace.position.y = -1.1;
+      terrace.scale.set(4.3, 1.2, 3.5);
+      terrace.visible = false;
+      holder.add(terrace);
+      holder.userData.terrace = terrace;
       holder.userData.variants = [];
       for (let v = 0; v < PROTOTYPES_PER_SLOT; v += 1) {
-        const builder = BUILDERS[theme.builders[v % theme.builders.length]];
+        const choices = kitName === "usa" ? ["billboard", "pole", "dinerSign", "pole"] : theme.builders;
+        const builder = BUILDERS[choices[v % choices.length]];
         const variant = builder(materials, theme);
         variant.visible = false;
         holder.add(variant);
@@ -752,17 +793,26 @@ class Odyssey {
     // Lyrics are planted in world space on the first setLyric call.
     this.textMeshes.clear();
     this.textLayer = new THREE.Group();
+    // Compile on first render. Async polling can outlive a kit switch and
+    // dereference programs already disposed with the previous scene.
   }
 
   /** Compose the world for playback second `t`. Pure: no state carries over. */
   update(t, options = {}) {
     const {
       direction = "forward", seed = 1337, speed = 9, pulse = 0, density = 1,
+      artStyle = "cinematic", secondaryMotion = "none", motionAmount = 0.35,
       wave = false, waveColor = "#4de2ff", waveIntensity = 1, spectrum = null,
       environment = { weather: "clear", daytime: "sunset", season: "summer" }
     } = options;
     const dir = DIRECTIONS[direction] || DIRECTIONS.forward;
     const travel = t * speed;
+
+    if (this.ocean) {
+      updateOceanCamera(this.camera, t, options);
+      updateOcean(THREE, this.ocean, { ...options, t, camera: this.camera });
+      return this;
+    }
 
     if (!this.slots || !this.slots.length) {
       // Text-only scene: just fly the camera so planted words still stream past.
@@ -801,23 +851,32 @@ class Odyssey {
 
       const populated = random() < 0.35 + 0.5 * density;
       const variantIndex = Math.floor(random() * PROTOTYPES_PER_SLOT);
-      const side = random() < 0.5 ? -1 : 1;
-      const scale = 0.7 + Math.pow(random(), 1.6) * 1.05;
+      const side = slotIndex % 2 === 0 ? -1 : 1;
+      const scale = 0.85 + random() * .25;
       // Push bigger props further out and keep a clear corridor down the middle.
       // The old band was 5-13 units wide, so neighbouring slots overlapped each
       // other and crowded the road.
-      const lateral = side * (8.5 + scale * 3.4 + random() * 13);
-      const spin = (random() - 0.5) * 0.5;
+      const lateral = side * (this.kit === 'usa' ? 9 : this.kit === 'italy' ? 16 : 14);
+      const spin = 0;
       // Depth jitter stops the props lining up as a wall every SLOT units.
-      const z = -(slotIndex * SLOT) + (random() - 0.5) * 5.5;
+      const z = -(slotIndex * SLOT) - (this.kit === 'usa' ? 12 : 0);
 
       for (let v = 0; v < holder.userData.variants.length; v += 1) {
         holder.userData.variants[v].visible = populated && v === variantIndex;
       }
-      holder.position.set(lateral, 0, z);
-      holder.rotation.y = spin;
-      const beat = 1 + pulse * 0.06;
-      holder.scale.setScalar(scale * beat);
+      holder.position.set(...sceneryPoint(lateral, 0, z, travel, direction, this.camera.position.z));
+      const secondaryAmount = clamp(Number(motionAmount) || 0);
+      if (secondaryMotion === 'sway') holder.position.x += Math.sin(t * .19) * secondaryAmount * 5;
+      if (secondaryMotion === 'rise') holder.position.y += Math.sin(t * .14) * secondaryAmount * 4;
+      if (secondaryMotion === 'orbit') {
+        const angle = Math.sin(t * .12) * secondaryAmount * .12;
+        const x = holder.position.x, y = holder.position.y;
+        holder.position.x = x * Math.cos(angle) - y * Math.sin(angle);
+        holder.position.y = x * Math.sin(angle) + y * Math.cos(angle);
+      }
+      holder.userData.terrace.visible = populated && ['up', 'down', 'ascend', 'dive'].includes(direction);
+      holder.rotation.y = spin + (direction === 'left' ? -Math.PI / 2 : direction === 'right' ? Math.PI / 2 : 0);
+      holder.scale.setScalar(scale);
     }
 
     if (this.waveField) {
@@ -833,6 +892,60 @@ class Odyssey {
       ambient: this.ambientLight, key: this.keyLight, rim: this.rimLight,
       travelLight: this.travelLight, t, state: environment
     });
+    updateWorld(THREE, this.world, { t, travel, direction, cameraZ: this.camera.position.z,
+      seed, artStyle, density, secondaryMotion, motionAmount, kitName: this.kit });
+    if (this.landmarkStyle !== artStyle) {
+      this.landmarkStyle = artStyle;
+      const materials = new Set();
+      for (const holder of this.slots) holder.traverse(object => {
+        if (object.isMesh && object.material?.color) materials.add(object.material);
+      });
+      for (const material of materials) {
+        if (!material.userData.originalPalette) material.userData.originalPalette = {
+          color: material.color.clone(), emissive: material.emissive?.clone(),
+          intensity: material.emissiveIntensity, map: material.map
+        };
+        const original = material.userData.originalPalette;
+        material.color.copy(original.color);
+        if (material.emissive && original.emissive) material.emissive.copy(original.emissive);
+        material.emissiveIntensity = original.intensity;
+        material.map = original.map;
+        if (artStyle === 'storybook') {
+          material.color.lerp(new THREE.Color(0xa39675), .46);
+          material.emissiveIntensity *= .16;
+          material.map = this.world.paperTexture;
+        }
+        material.needsUpdate = true;
+      }
+    }
+    const vertical = ['up', 'down', 'ascend', 'dive'].includes(direction);
+    for(const holder of this.slots)holder.visible=!vertical;
+    this.world.group.visible=!vertical;
+    updateExpeditions(THREE,this.expeditions,{t,travel,cameraZ:this.camera.position.z,direction,seed,artStyle});
+    // Secondary movement is applied in the newly chosen world's local frame.
+    this.expeditions.group.position.copy(this.world.group.position);
+    this.expeditions.group.rotation.copy(this.world.group.rotation);
+    const underground=direction==='down'||direction==='dive';
+    this.sky.visible=!underground;this.ridges.visible=!vertical && this.kit !== 'usa';
+    if(underground){
+      this.scene.background.set(0x09131c);this.scene.fog.color.set(0x09131c);
+      this.scene.fog.near=30;this.scene.fog.far=190;
+      this.ambientLight.color.set(0xc0c8c7);this.ambientLight.intensity=1.1;
+      this.keyLight.color.set(0x90c4ca);this.keyLight.intensity=1.4;
+      this.travelLight.color.set(0x60e8d6);this.travelLight.intensity=55;
+    }else this.travelLight.color.set(this.theme.warm);
+    this.ground.visible = !vertical;
+    if(!vertical)this.ground.material.color.set(this.world.groundColor ?? this.theme.ground);
+    // The river and banks carry perspective; a neon dashed road flattened it.
+    this.laneGroup.visible = false;
+    if (artStyle === 'storybook') {
+      this.ambientLight.intensity = Math.max(.9, this.ambientLight.intensity);
+      this.ground.material.roughness = .95;
+      this.ground.material.metalness = 0;
+    } else {
+      this.ground.material.roughness = .55;
+      this.ground.material.metalness = .2;
+    }
 
     // Lane dashes recycle around the camera so the road never runs out.
     const dashSpacing = 7;
@@ -967,6 +1080,14 @@ class Odyssey {
 
     const speed = world.speed || 9;
     const cam = this.camera.position;
+    // One rigid rotation for the whole phrase, not independent letter tilts.
+    // Defaults preserve old projects. Reuse scratch objects across every word.
+    const radians = (value, limit) => THREE.MathUtils.degToRad(clamp(Number(value) || 0, -limit, limit));
+    const orientation = this.lyricOrientation ||= new THREE.Quaternion();
+    const localRotation = this.lyricLocalRotation ||= new THREE.Quaternion();
+    const euler = this.lyricEuler ||= new THREE.Euler();
+    const point = this.lyricPoint ||= new THREE.Vector3();
+    orientation.setFromEuler(euler.set(radians(style.text3DPitch, 85), radians(style.text3DYaw, 85), radians(style.text3DRoll, 180)));
     // Building a whole phrase of slabs in one frame is what caused the hitch
     // on every phrase change; spread the work across frames instead.
     let meshBudget = 4;
@@ -1065,8 +1186,12 @@ class Odyssey {
         }
 
         mesh.visible = true;
-        mesh.position.set(x, y, z);
-        mesh.rotation.set(pitch, yaw, 0);
+        const anchorX = Number(style.offset3DX) || 0;
+        const anchorY = groundClearance + layout.blockHalf + (Number(style.offset3DY) || 0);
+        point.set(x - anchorX, y - anchorY, z - boardZ).applyQuaternion(orientation);
+        mesh.position.set(anchorX + point.x, anchorY + point.y, boardZ + point.z);
+        localRotation.setFromEuler(euler.set(pitch, yaw, 0));
+        mesh.quaternion.copy(orientation).multiply(localRotation);
         mesh.scale.setScalar(layout.unit * steady * scaleBoost);
 
         // One smooth curve from birth to fly-past: no separate exit, which is
@@ -1093,6 +1218,27 @@ class Odyssey {
 
   clearLyric() {
     for (const [, mesh] of this.textMeshes) mesh.visible = false;
+  }
+
+  disposeScene() {
+    if (!this.scene) return;
+    const geometries = new Set(), materials = new Set(), textures = new Set();
+    this.scene.traverse(object => {
+      for (const texture of object.userData.ownedTextures || []) textures.add(texture);
+      if (object.geometry) geometries.add(object.geometry);
+      const list = Array.isArray(object.material) ? object.material : [object.material];
+      for (const material of list) if (material) {
+        materials.add(material);
+        for (const value of Object.values(material)) if (value?.isTexture) textures.add(value);
+      }
+    });
+    for (const texture of textures) texture.dispose();
+    for (const geometry of geometries) geometry.dispose();
+    for (const material of materials) material.dispose();
+    textureCache.clear();
+    this.lyricLayouts.clear();
+    this.world = null;
+    this.ocean = null;
   }
 
   setSize(width, height) {

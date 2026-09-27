@@ -17,20 +17,22 @@
       </div>
       <label class="project-name"><span>Project</span><input id="projectTitle" value="Untitled lyric video" maxlength="80" /></label>
       <div class="top-actions">
+        <button class="chip language-toggle" id="languageToggle" type="button" title="Switch to Italian" aria-label="Switch interface language">IT</button>
         <button class="chip status-chip" id="engineStatus" type="button" title="Local engine status"><i></i><span>Checking engine</span></button>
+        <button class="chip diagnostics-trigger" id="diagnosticsButton" type="button" title="Open support diagnostics">Diagnostics</button>
         <button class="icon-button" id="settingsButton" type="button" title="Settings" aria-label="Open settings">⚙</button>
         <button class="icon-button" id="shutdownButton" type="button" title="Save and stop Phrasync" aria-label="Stop Phrasync">⏻</button>
         <button class="icon-button" id="themeToggle" type="button" title="Toggle light/dark theme" aria-label="Toggle theme">
           <svg class="sun" viewBox="0 0 24 24"><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/><circle cx="12" cy="12" r="4"/></svg>
         </button>
-        <button class="button secondary" id="criticButton" type="button">Critic check</button>
-        <button class="button primary" id="renderButton" type="button"><span>Render MP4</span><kbd>⌘↵</kbd></button>
+        <button class="button secondary" id="criticButton" type="button">Check project</button>
+        <button class="button primary" id="renderButton" type="button"><span>Render MP4</span><kbd>Ctrl ↵</kbd></button>
       </div>
     </header>
 
     <main class="workspace">
       <aside class="panel controls-panel">
-        <div class="panel-title"><h2>Build</h2><span>live parameters</span></div>
+        <div class="panel-title"><h2>Studio</h2><span>Picture · sound · words</span></div>
 
         <div class="mode-card">
           <div class="segmented" id="projectMode" aria-label="Project mode">
@@ -63,8 +65,8 @@
                   <option value="particles">Orbit particles</option>
                   <option value="equalizer">Audio equalizer</option>
                   <option value="grid">Neon horizon grid</option>
-                  <option value="scene3d">Odyssey 3D: WebGL flythrough</option>
-                  <option value="scene">Odyssey Flat: raster MP4</option>
+                  <option value="scene3d">Odyssey · 3D worlds</option>
+                  <option value="scene">Odyssey · illustrated landscape</option>
                 </select>
               </label>
             </div>
@@ -76,17 +78,41 @@
                       <option value="italy">Italy</option>
                       <option value="china">China</option>
                       <option value="usa">United States</option>
+                      <option value="ocean">Lost in the Ocean</option>
                     </select>
                   </label>
                   <label class="field"><span>Direction</span>
                     <select id="sceneDirection">
                       <option value="forward">Forward</option>
+                      <option value="left">Travel left</option>
+                      <option value="right">Travel right</option>
+                      <option value="up">Travel up</option>
+                      <option value="down">Travel down</option>
                       <option value="ascend">Ascend</option>
                       <option value="dive">Dive</option>
                       <option value="drift">Drift</option>
                       <option value="bank">Bank</option>
                     </select>
                   </label>
+                </div>
+                <div id="sceneArtControls">
+                  <label class="field"><span>Art direction</span>
+                    <select id="sceneArtStyle">
+                      <option value="cinematic">Cinematic · natural light</option>
+                      <option value="storybook">Storybook · painted worlds</option>
+                      <option value="psychedelic">Psychedelic · colour in motion</option>
+                    </select>
+                  </label>
+                  <label class="field"><span>Secondary movement</span>
+                    <select id="secondaryMotion">
+                      <option value="none">None · steady camera</option>
+                      <option value="sway">Sway · side to side</option>
+                      <option value="rise">Float · up and down</option>
+                      <option value="orbit">Orbit · gentle circles</option>
+                    </select>
+                  </label>
+                  <label class="range-field"><span>Movement strength <output id="motionAmountOut">35%</output></span><input id="motionAmount" type="range" min="0" max="100" value="35" /></label>
+                  <p class="microcopy">Direction shapes the world. Secondary movement adds motion along that route.</p>
                 </div>
                 <label class="toggle-row small"><input id="sceneBeat" type="checkbox" /><span><b>Beat-synced elements</b><small>Pulse props and lights to the beat</small></span></label>
                 <label class="toggle-row small"><input id="sceneWave" type="checkbox" /><span><b>Particle flow</b><small>Frequency-reactive particle wave</small></span></label>
@@ -99,6 +125,14 @@
                 <label class="range-field"><span>Speed <output id="sceneSpeedOut">100%</output></span><input id="sceneSpeed" type="range" min="20" max="260" value="100" /></label>
                 <label class="range-field"><span>Density <output id="sceneDensityOut">100%</output></span><input id="sceneDensity" type="range" min="20" max="180" value="100" /></label>
                 <button class="button wide" id="sceneReseed" type="button">Regenerate world</button>
+                <div id="oceanControls" hidden>
+                  <p class="microcopy">Open water, moving light. Choose Daytime below; position the sun and moon independently.</p>
+                  <label class="range-field"><span>Sun · horizontal <output id="sunAzimuthOut">25°</output></span><input id="sunAzimuth" type="range" min="-180" max="180" value="25" /></label>
+                  <label class="range-field"><span>Sun · elevation <output id="sunElevationOut">12°</output></span><input id="sunElevation" type="range" min="-10" max="85" value="12" /></label>
+                  <label class="range-field"><span>Moon · horizontal <output id="moonAzimuthOut">-25°</output></span><input id="moonAzimuth" type="range" min="-180" max="180" value="-25" /></label>
+                  <label class="range-field"><span>Moon · elevation <output id="moonElevationOut">18°</output></span><input id="moonElevation" type="range" min="-10" max="85" value="18" /></label>
+                  <label class="range-field"><span>Ocean waves <output id="oceanWaveStrengthOut">65%</output></span><input id="oceanWaveStrength" type="range" min="0" max="150" value="65" /></label>
+                </div>
                 <div id="environmentControls" class="environment-controls" hidden>
                   <label class="field"><span>Environment</span>
                     <select id="environmentMode">
@@ -271,6 +305,13 @@
             <div class="two-columns" id="text3dOffsetControls" hidden>
               <label class="range-field"><span>3D horizontal offset <output id="offset3DXOut">0.0</output></span><input id="offset3DX" type="range" min="-12" max="12" step="0.25" value="0" /></label>
               <label class="range-field"><span>3D vertical offset <output id="offset3DYOut">0.0</output></span><input id="offset3DY" type="range" min="-8" max="8" step="0.25" value="0" /></label>
+            </div>
+            <div id="textOrientationControls" hidden>
+              <label class="range-field"><span>3D text tilt <output id="text3DPitchOut">0°</output></span><input id="text3DPitch" type="range" min="-85" max="85" step="1" value="0" /></label>
+              <label class="range-field"><span>3D text turn <output id="text3DYawOut">0°</output></span><input id="text3DYaw" type="range" min="-85" max="85" step="1" value="0" /></label>
+              <label class="range-field"><span>3D text roll <output id="text3DRollOut">0°</output></span><input id="text3DRoll" type="range" min="-180" max="180" step="1" value="0" /></label>
+              <button id="resetTextOrientation" type="button">Reset text orientation</button>
+              <p class="microcopy">Rotate the entire phrase within the scene. Zero keeps it upright in world space.</p>
             </div>
             <label class="range-field"><span>Line gap <output id="lineGapOut">-8</output></span><input id="lineGap" type="range" min="-30" max="70" value="-8" /></label>
             <div class="color-row">
@@ -455,6 +496,26 @@
     </section>
   </div>
 
+  <dialog id="onboardingDialog" class="modal onboarding-modal">
+    <div class="modal-card onboarding-card">
+      <header>
+        <div><span class="eyebrow">WELCOME TO PHRA//SYNC</span><h2>Local lyric videos, without the wait being a mystery</h2></div>
+        <button class="chip language-toggle" id="onboardingLanguageToggle" type="button" title="Switch to Italian" aria-label="Switch interface language">IT</button>
+      </header>
+      <div class="onboarding-content">
+        <div class="onboarding-icon" aria-hidden="true">◉</div>
+        <h3>Your first transcription downloads an AI model</h3>
+        <p>Choose a Whisper model and select <strong>Transcribe</strong>. The first run downloads that model to this computer. Phrasync will show the download percentage, transferred size, and estimated time remaining.</p>
+        <div class="onboarding-points">
+          <p><strong>It happens once per model.</strong><span>Later transcriptions start directly from the local copy.</span></p>
+          <p><strong>Your media stays local.</strong><span>Audio, lyrics, transcripts, projects, and exports are not uploaded to Phrasync.</span></p>
+          <p><strong>NVIDIA acceleration is automatic.</strong><span>With a compatible NVIDIA GPU and current driver, transcription uses CUDA; otherwise the interface clearly reports CPU mode.</span></p>
+        </div>
+      </div>
+      <footer><button class="button primary" id="onboardingContinue" type="button">Start creating</button></footer>
+    </div>
+  </dialog>
+
   <dialog id="reportDialog" class="modal report-modal">
     <form method="dialog" class="modal-card">
       <header><div><span class="eyebrow">GAUNTLET CRITIC</span><h2 id="reportTitle">Quality report</h2></div><button class="icon-button" value="cancel" aria-label="Close">×</button></header>
@@ -469,6 +530,12 @@
     <form method="dialog" class="modal-card">
       <header><div><span class="eyebrow">LOCAL SETTINGS</span><h2>Integrations</h2></div><button class="icon-button" value="cancel" aria-label="Close">×</button></header>
       <div class="settings-content">
+        <section class="integration-card store-update-card">
+          <div class="integration-heading"><div><strong>App updates</strong><span id="storeUpdateVersion">Checking installation…</span></div><span class="integration-badge">Microsoft Store</span></div>
+          <p>Check for new Phrasync versions and install them through Microsoft Store. Your projects remain on this computer.</p>
+          <p id="storeUpdateMessage" role="status" aria-live="polite">Open settings to check the installation.</p>
+          <div class="settings-actions"><button class="button secondary" id="storeUpdateCheck" type="button">Check for updates</button><button class="button primary" id="storeUpdateInstall" type="button" hidden>Install update</button></div>
+        </section>
         <section class="integration-card">
           <div class="integration-heading">
             <div><strong>Hugging Face</strong><span id="hfTokenStatus">Not configured</span></div>
@@ -483,9 +550,30 @@
     </form>
   </dialog>
 
+  <dialog id="diagnosticsDialog" class="modal diagnostics-modal">
+    <div class="modal-card">
+      <header><div><span class="eyebrow">LOCAL SUPPORT</span><h2>Diagnostics</h2></div><button class="icon-button" id="diagnosticsClose" type="button" aria-label="Close diagnostics">×</button></header>
+      <div class="diagnostics-content">
+        <p>Windows, CPU, GPU, RAM, app version and recent errors are included. Media files, project contents and saved tokens are not attached. Error messages may contain file paths: review the report before sharing.</p>
+        <span id="diagnosticsStatus" role="status">Open to load the local report.</span>
+        <pre id="diagnosticsOutput" tabindex="0" aria-label="Support report"></pre>
+      </div>
+      <footer><button class="button secondary" id="diagnosticsRefresh" type="button">Refresh</button><button class="button secondary" id="diagnosticsCopy" type="button">Copy report</button><button class="button primary" id="diagnosticsDownload" type="button">Download log</button></footer>
+    </div>
+  </dialog>
+
   <dialog id="renderDialog" class="modal render-modal">
     <div class="modal-card">
       <header><div><span class="eyebrow">LOCAL RENDER</span><h2 id="renderTitle">Building your lyric video</h2></div><button class="icon-button" id="renderClose" aria-label="Close">×</button></header>
+      <div class="render-destination">
+        <strong>Save video to</strong>
+        <span id="renderDirectory">Loading export folder…</span>
+        <div class="render-destination-actions">
+          <button class="button secondary" id="chooseRenderDirectory" type="button">Choose folder</button>
+          <button class="button secondary" id="openRenderDirectory" type="button">Open renders folder</button>
+          <button class="button secondary" id="openDefaultRenderDirectory" type="button">Open Phrasync default folder</button>
+        </div>
+      </div>
       <div class="render-visual"><div class="render-pulse"></div><strong id="renderPercent">0%</strong></div>
       <div class="progress-track"><span id="renderProgress"></span></div>
       <p id="renderMessage">Preparing critic pass…</p>
@@ -494,11 +582,13 @@
         <a class="button primary" id="downloadRender" href="#">Download MP4</a>
       </div>
       <div class="render-error" id="renderError" hidden></div>
-      <footer><button class="button secondary" id="cancelRender" type="button">Cancel render</button></footer>
+      <footer><button class="button primary" id="confirmRender" type="button">Start export</button><button class="button secondary" id="cancelRender" type="button">Cancel render</button></footer>
     </div>
   </dialog>
 
   <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+  <script src="/static/diagnostics.js" defer></script>
+  <script src="/static/i18n.js" defer></script>
   <script src="/static/kinetic.js" defer></script>
   <script src="/static/scene3d.js" defer></script>
   <script src="/static/scene3d-draw.js" defer></script>
@@ -506,11 +596,16 @@
   <script src="/static/timeline.js" defer></script>
   <script src="/static/app-state.js" defer></script>
   <script src="/static/app-modes.js" defer></script>
+  <script src="/static/app-ocean.js" defer></script>
+  <script src="/static/app-text-orientation.js" defer></script>
   <script src="/static/app-ui.js" defer></script>
   <script src="/static/app-lyrics.js" defer></script>
   <script src="/static/app-visuals.js" defer></script>
+  <script src="/static/app-loop.js" defer></script>
   <script src="/static/app-cues.js" defer></script>
   <script src="/static/app-workflows.js" defer></script>
+  <script src="/static/app-render.js" defer></script>
+  <script src="/static/store-updates.js" defer></script>
   <script src="/static/app-timeline.js" defer></script>
   <script src="/static/app.js" defer></script>
 </body>

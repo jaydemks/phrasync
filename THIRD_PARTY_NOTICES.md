@@ -26,3 +26,15 @@ Before publishing a binary release, generate a version-pinned dependency invento
 Bundled at `static/vendor/three.module.min.js` (version 0.169.0), used by the
 Odyssey 3D background. Copyright 2010-2024 three.js authors, MIT License.
 Upstream: https://github.com/mrdoob/three.js
+Full license: `static/vendor/THREE-LICENSE.txt` (upstream tag r169).
+
+Lost in the Ocean uses locally implemented procedural shaders and the bundled
+Three.js engine. No reference photograph, external shader pack, paid texture,
+or remotely hosted asset is included by this feature.
+
+## Noto Sans JP
+
+The Japanese MP4-export fallback font at `assets/NotoSansJP-VF.ttf` is Noto Sans JP
+from the [Google Fonts repository](https://github.com/google/fonts/tree/main/ofl/notosansjp),
+licensed under the SIL Open Font License 1.1. Its copyright notice and complete
+license are included in `assets/NotoSansJP-OFL.txt` and bundled with the app.

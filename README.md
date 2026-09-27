@@ -36,7 +36,7 @@ Recent releases made model downloads easier to follow and the Windows preview sm
 
 ## Get Phrasync
 
-**Microsoft Store:** [Install the free Windows app](https://apps.microsoft.com/detail/9NF9JBG2PKHX). Phrasync has been available there across several releases. The Store build packages the same local editor in a dedicated window with Windows file dialogs. Version 0.4.3 adds an in-app Store update check. Certification means the Store version can temporarily lag behind this repository; check the Store listing for the version currently offered.
+**Microsoft Store:** [Install the free Windows app](https://apps.microsoft.com/detail/9NF9JBG2PKHX). Phrasync has been available there across several releases. The Store build packages the same local editor in a dedicated window with Windows file dialogs. Version 0.4.3 added an in-app Store update check. The 0.4.4 Store update, including the manual-lyrics fix and demo trailer, has been submitted for certification; 0.4.3 remains available until Microsoft publishes it. Check the Store listing for the version currently offered.
 
 **GitHub source:** The current source release is [v0.4.4](https://github.com/jaydemks/phrasync/releases/tag/v0.4.4). On Windows, install [Python 3.11 or 3.12](https://www.python.org/downloads/) with its `py` launcher, clone or download the repository, and run `run_windows.bat`. The first launch installs dependencies. For the same editor in your local browser, run `.venv\Scripts\python.exe app.py --external-browser` after setup. The GitHub release has source code, not a ready-to-install Windows package. Linux and macOS launch scripts are included but are not release-tested like Windows.
 

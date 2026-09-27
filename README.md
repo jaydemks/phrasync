@@ -8,9 +8,7 @@ Created by [jaydemks](https://github.com/jaydemks).
 
 ## Watch Phrasync in action
 
-[![Animated preview of Phrasync creating timed lyric videos](docs/media/phrasync-demo-preview.gif)](docs/media/phrasync-demo.mp4)
-
-*The preview plays directly on GitHub. Select it to open the complete demo.*
+https://github.com/user-attachments/assets/9ec2387b-2c79-4257-980f-3e578a12f39b
 
 ![Phrasync editor with preview, lyric cues and timeline](docs/media/editor-overview.png)
 

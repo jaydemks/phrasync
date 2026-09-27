@@ -27,17 +27,17 @@ def main():
             dev.eval("document.getElementById('diagnosticsButton').click()")
             for _ in range(20):
                 diagnostics = dev.eval("({open:document.getElementById('diagnosticsDialog').open,report:document.getElementById('diagnosticsOutput').textContent})")
-                if 'Phrasync: 0.4.3' in diagnostics['report']:
+                if 'Phrasync: 0.4.4' in diagnostics['report']:
                     break
                 time.sleep(.25)
-            assert diagnostics['open'] and 'Phrasync: 0.4.3' in diagnostics['report']
+            assert diagnostics['open'] and 'Phrasync: 0.4.4' in diagnostics['report']
             assert 'GPU:' in diagnostics['report'] and 'Windows' in diagnostics['report']
             dev.shot('body').save(out / 'diagnostics-dialog.png')
             dev.eval("document.getElementById('diagnosticsClose').click()")
             dev.eval("document.getElementById('settingsButton').click()")
             for _ in range(20):
                 update_panel = dev.eval("({open:document.getElementById('settingsDialog').open,version:document.getElementById('storeUpdateVersion').textContent,message:document.getElementById('storeUpdateMessage').textContent,disabled:document.getElementById('storeUpdateCheck').disabled})")
-                if 'Phrasync 0.4.3' in update_panel['version']:
+                if 'Phrasync 0.4.4' in update_panel['version']:
                     break
                 time.sleep(.25)
             assert update_panel['open'] and update_panel['disabled']

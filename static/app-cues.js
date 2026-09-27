@@ -119,7 +119,7 @@ function renderCueList(options = {}) {
     });
     text.addEventListener("input", () => {
       cue.text = text.value;
-      if (cue.id === currentCueId) renderLyric(cue, true);
+      if (cue.id === currentCueId) renderLyric(true);
       scheduleSave();
     });
     remove.addEventListener("click", () => {
@@ -146,7 +146,8 @@ async function createCuesFromLines(lines, replace) {
     start: startAt + index * slot,
     end: startAt + (index + 1) * slot - .03,
     text,
-    words: []
+    words: [],
+    manual: true
   }));
   project.cues = replace ? newCues : [...project.cues, ...newCues];
   normalizeCues();

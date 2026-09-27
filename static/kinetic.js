@@ -423,7 +423,8 @@
    *
    * A phrase keeps painting through its tail while the next one is already
    * fading in, which is what turns the phrase change into a dissolve instead of
-   * a cut. Cues never overlap, so at most two qualify.
+   * a cut. More than two can qualify when someone adds a cue over a
+   * transcription; keep that manual cue visible instead of dropping it.
    */
   function activeCues(cues, t, spec) {
     const lead = Math.max(spec.lead, 0.05);
@@ -431,6 +432,18 @@
     for (const cue of cues) {
       if (cue.start - lead > t) break;
       if (t <= cue.end + spec.tail) result.push(cue);
+    }
+    // A manual insertion is a correction to the transcribed line at that
+    // point, not another layer that should be painted underneath it.
+    const playing = cue => cue.start <= t && t < cue.end;
+    const manual = result.filter(cue => cue.manual === true && playing(cue));
+    if (manual.length) return manual.slice(-1);
+    // Older projects did not tag manual cues; unlike transcribed phrases,
+    // they usually have no stored word timings.
+    const playingCues = result.filter(playing);
+    if (playingCues.length > 1) {
+      const untimed = playingCues.filter(cue => !cue.words || cue.words.length === 0);
+      if (untimed.length) return untimed.slice(-1);
     }
     return result.slice(-2);
   }

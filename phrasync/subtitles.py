@@ -65,6 +65,8 @@ def normalize_cue(cue: dict[str, Any], index: int = 0) -> dict[str, Any]:
     # cues have no tag and stay untouched.
     if cue.get("language"):
         normalized["language"] = str(cue["language"])
+    if cue.get("manual") is True:
+        normalized["manual"] = True
     return normalized
 
 

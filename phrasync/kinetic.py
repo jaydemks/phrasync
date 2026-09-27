@@ -337,7 +337,7 @@ def active_cues(
 
     A phrase keeps painting through its tail while the next one is already
     fading in, which is what turns the phrase change into a dissolve instead of
-    a cut. Cues never overlap, so at most two qualify.
+    a cut. Manually added cues can overlap transcribed ones; keep them visible.
     """
     lead = max(spec.lead, 0.05)
     result: list[dict[str, Any]] = []
@@ -346,6 +346,21 @@ def active_cues(
             break
         if t <= cue["end"] + spec.tail:
             result.append(cue)
+    def playing(cue: dict[str, Any]) -> bool:
+        return cue["start"] <= t < cue["end"]
+
+    # Manual text overrides the transcribed line at its own timestamp instead
+    # of being layered underneath it.
+    manual = [cue for cue in result if cue.get("manual") is True and playing(cue)]
+    if manual:
+        return manual[-1:]
+    # Older projects did not tag manual cues; unlike transcribed phrases,
+    # they usually have no stored word timings.
+    playing_cues = [cue for cue in result if playing(cue)]
+    if len(playing_cues) > 1:
+        untimed = [cue for cue in playing_cues if not cue.get("words")]
+        if untimed:
+            return untimed[-1:]
     return result[-2:]
 
 

@@ -1,3 +1,11 @@
+# Phrasync v0.4.4 — GitHub source release
+
+- Manually added lyric cues remain visible during playback and MP4 export even when they overlap transcribed cues. Existing projects with untimed manual cues are also handled.
+- New manual cues use the playhead's lyric timing offset correctly, and editing an active cue refreshes its preview immediately.
+- The Microsoft Store package is not part of this GitHub source release. Store v0.4.3 is still in certification; v0.4.4 will be submitted after it is approved.
+
+---
+
 # Phrasync v0.4.3 — Microsoft Store submission
 
 This release makes updates and troubleshooting more reliable.

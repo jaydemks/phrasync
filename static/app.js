@@ -187,8 +187,8 @@ function bindControls() {
   els.appendBulkButton.addEventListener("click", () => createCuesFromLines(els.bulkLyrics.value.split(/\r?\n/), false));
   els.replaceBulkButton.addEventListener("click", () => createCuesFromLines(els.bulkLyrics.value.split(/\r?\n/), true));
   els.addCueButton.addEventListener("click", () => {
-    const start = currentPlaybackTime();
-    const cue = { id: `cue-${Date.now()}`, start, end: start + 2.5, text: "NEW LYRIC", words: [] };
+    const start = Math.max(0, lyricTime());
+    const cue = { id: `cue-${Date.now()}`, start, end: start + 2.5, text: "NEW LYRIC", words: [], manual: true };
     project.cues.push(cue); selectedCueId = cue.id; renderCueList(); updateDurationUI(); scheduleSave();
     requestAnimationFrame(() => els.cueList.scrollTo({ top: els.cueList.scrollHeight, behavior: "smooth" }));
   });

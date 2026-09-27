@@ -76,7 +76,8 @@ function normalizeCues() {
       start: Math.max(0, Number(cue.start) || 0),
       end: Math.max((Number(cue.start) || 0) + 0.05, Number(cue.end) || (Number(cue.start) || 0) + 2),
       text: String(cue.text || "").trim(),
-      words: Array.isArray(cue.words) ? cue.words : []
+      words: Array.isArray(cue.words) ? cue.words : [],
+      ...(cue.manual === true ? { manual: true } : {})
     }))
     .filter(cue => cue.text)
     .sort((a, b) => a.start - b.start || a.end - b.end);

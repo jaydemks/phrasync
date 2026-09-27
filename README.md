@@ -4,7 +4,13 @@
 
 Phrasync is a free, local studio for lyric videos and subtitles. Bring in a song or video, transcribe it on your computer, correct the words and their timing, choose how it looks, and export an MP4. Your media is not uploaded to a Phrasync service.
 
-Created by [jaydemks](https://github.com/jaydemks). Watch an [early demo](docs/media/phrasync-demo.mp4) or see the current editor below.
+Created by [jaydemks](https://github.com/jaydemks).
+
+## Watch Phrasync in action
+
+[![Animated preview of Phrasync creating timed lyric videos](docs/media/phrasync-demo-preview.gif)](docs/media/phrasync-demo.mp4)
+
+*The preview plays directly on GitHub. Select it to open the complete demo.*
 
 ![Phrasync editor with preview, lyric cues and timeline](docs/media/editor-overview.png)
 

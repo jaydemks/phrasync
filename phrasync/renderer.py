@@ -20,6 +20,8 @@ from .render_typography import render_text_layer
 from .render_utils import apply_dim, cover, scale_for_canvas
 from .subtitles import normalize_cues
 from .webgl_renderer import render_webgl_video
+from .encoding import rate_control_args
+from .footage import prepare_footage, effects_enabled
 
 ProgressCallback = Callable[[float, str], None]
 
@@ -37,10 +39,11 @@ class RenderContext:
     background_asset: Asset | None
     font_asset: Asset | None
     envelope: np.ndarray
+    start_time: float = 0.0
 
 
 class VideoFrameSource:
-    def __init__(self, path: Path, width: int, height: int, fps: int, frame_count: int):
+    def __init__(self, path: Path, width: int, height: int, fps: int, frame_count: int, start_time: float = 0):
         self.frame_size = width * height * 3
         vf = (
             f"scale={width}:{height}:force_original_aspect_ratio=increase,"
@@ -54,6 +57,7 @@ class VideoFrameSource:
                 "error",
                 "-stream_loop",
                 "-1",
+                "-ss", str(start_time),
                 "-i",
                 str(path),
                 "-an",
@@ -137,7 +141,7 @@ class FrameComposer:
         self.image: Image.Image | None = None
         if self.type == "video" and ctx.background_asset:
             self.video_source = VideoFrameSource(
-                Path(ctx.background_asset.path), ctx.width, ctx.height, ctx.fps, ctx.frame_count
+                Path(ctx.background_asset.path), ctx.width, ctx.height, ctx.fps, ctx.frame_count, ctx.start_time
             )
         elif self.type == "image" and ctx.background_asset:
             image = ImageOps.exif_transpose(Image.open(ctx.background_asset.path)).convert("RGB")
@@ -210,7 +214,7 @@ def _build_context(project: dict[str, Any], progress: ProgressCallback | None = 
             raise ValueError("The selected media has no decodable audio stream.")
     background = project.get("background") or {}
     background_asset = None
-    if background.get("type") in {"image", "video"} and background.get("assetId"):
+    if not background.get("footageEnabled") and background.get("type") in {"image", "video"} and background.get("assetId"):
         background_asset = get_asset(background.get("assetId"), background.get("type"))
         if not background_asset:
             raise ValueError("Background asset is missing")
@@ -218,18 +222,38 @@ def _build_context(project: dict[str, Any], progress: ProgressCallback | None = 
     font_asset = get_asset(style.get("fontAssetId"), "font") if style.get("fontAssetId") else None
     cue_duration = max((float(cue["end"]) for cue in cues), default=0.0)
     duration = max(float(project.get("duration") or 0.0), cue_duration)
+    if background.get("footageEnabled"):
+        duration = max(duration, max((clip["end"] for clip in background.get("clips", [])), default=0))
     if audio:
         duration = probe_duration(Path(audio.path)) or duration
+        if background.get("footageEnabled"):
+            duration = max(duration, max((clip["end"] for clip in background.get("clips", [])), default=0))
+    if background_asset and background.get("type") == "video":
+        duration = max(duration, probe_duration(Path(background_asset.path)) or 0)
+    if project.get("timelineDuration") is not None:
+        duration = float(project["timelineDuration"])
+        if not math.isfinite(duration) or duration < .5:
+            raise ValueError("Timeline duration must be a finite number of at least 0.5 seconds")
     duration = max(0.5, duration)
+    full_duration = duration
+    start_time = 0.0
+    export_range = project.get("exportRange")
+    if export_range is not None:
+        start_time = float(export_range.get("in", 0))
+        end_time = float(export_range.get("out", duration))
+        if not math.isfinite(start_time) or not math.isfinite(end_time) or not 0 <= start_time < end_time <= duration:
+            raise ValueError("Export range must satisfy 0 <= IN < OUT <= timeline duration")
+        duration = end_time - start_time
     frame_count = max(1, int(math.ceil(duration * fps)))
     if progress:
         progress(0.015, "Analyzing audio")
     envelope = audio_envelope(
         Path(audio.path) if audio else None,
-        duration,
+        full_duration,
         fps,
         progress=(lambda value: progress(0.015 + value * 0.045, "Analyzing audio")) if progress else None,
     )
+    envelope = envelope[round(start_time * fps):round(start_time * fps) + frame_count]
     return RenderContext(
         project=project,
         width=width,
@@ -242,6 +266,7 @@ def _build_context(project: dict[str, Any], progress: ProgressCallback | None = 
         background_asset=background_asset,
         font_asset=font_asset,
         envelope=envelope,
+        start_time=start_time,
     )
 
 
@@ -252,6 +277,7 @@ def render_project(
     cancel_check: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     started = time.monotonic()
+    project = prepare_footage(project)
     ctx = _build_context(project, progress)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = output_path.with_suffix(".partial.mp4")
@@ -261,6 +287,7 @@ def render_project(
     exact_webgl = (
         background.get("textSpace", "flat") == "scene"
         or (background.get("type") == "dynamic" and background.get("visual") == "scene3d")
+        or effects_enabled(project)
     )
     if exact_webgl:
         encoded = output_path.with_suffix(".partial.h264")
@@ -289,13 +316,13 @@ def render_project(
                     "-s:v", f"{ctx.width}x{ctx.height}", "-r", str(ctx.fps), "-i", "pipe:0",
                 ]
                 if ctx.audio:
-                    command.extend(["-i", ctx.audio.path])
+                    command.extend(["-ss", str(ctx.start_time), "-i", ctx.audio.path])
                 command.extend(["-map", "0:v:0"])
                 if ctx.audio:
                     command.extend(["-map", "1:a:0", "-c:a", "aac", "-b:a", "192k"])
                 command.extend([
                     "-c:v", "libx264", "-preset", str(project.get("export", {}).get("preset", "medium")),
-                    "-crf", str(project.get("export", {}).get("crf", 18)), "-pix_fmt", "yuv420p",
+                    *rate_control_args(project), "-pix_fmt", "yuv420p",
                     "-t", f"{ctx.duration:.6f}", "-movflags", "+faststart", str(temporary),
                 ])
                 encoder = subprocess.Popen(
@@ -315,7 +342,7 @@ def render_project(
                         details = decoder.stderr.read().decode("utf-8", errors="replace") if decoder.stderr else ""
                         raise RuntimeError(f"WebGL frame decoder stopped early: {details}")
                     frame = Image.frombytes("RGB", (ctx.width, ctx.height), raw)
-                    lyric = render_text_layer(ctx, frame_index / ctx.fps)
+                    lyric = render_text_layer(ctx, ctx.start_time + frame_index / ctx.fps)
                     if lyric is not None:
                         frame = Image.alpha_composite(frame.convert("RGBA"), lyric).convert("RGB")
                     encoder.stdin.write(frame.tobytes())
@@ -337,7 +364,7 @@ def render_project(
                     "-f", "h264", "-i", str(encoded),
                 ]
                 if ctx.audio:
-                    command.extend(["-i", ctx.audio.path])
+                    command.extend(["-ss", str(ctx.start_time), "-i", ctx.audio.path])
                 command.extend(["-map", "0:v:0"])
                 if ctx.audio:
                     command.extend(["-map", "1:a:0", "-c:a", "aac", "-b:a", "192k"])
@@ -385,7 +412,7 @@ def render_project(
         "pipe:0",
     ]
     if ctx.audio:
-        command.extend(["-i", ctx.audio.path])
+        command.extend(["-ss", str(ctx.start_time), "-i", ctx.audio.path])
     command.extend(
         [
             "-map",
@@ -400,8 +427,7 @@ def render_project(
             "libx264",
             "-preset",
             str(project.get("export", {}).get("preset", "medium")),
-            "-crf",
-            str(project.get("export", {}).get("crf", 18)),
+            *rate_control_args(project),
             "-pix_fmt",
             "yuv420p",
             "-t",
@@ -417,7 +443,7 @@ def render_project(
         for frame_index in range(ctx.frame_count):
             if cancel_check and cancel_check():
                 raise RuntimeError("Render cancelled")
-            t = frame_index / ctx.fps
+            t = ctx.start_time + frame_index / ctx.fps
             encoder.stdin.write(composer.frame(t, frame_index).tobytes())
             if progress and frame_index % max(1, ctx.frame_count // 200) == 0:
                 progress(0.06 + 0.90 * (frame_index / ctx.frame_count), f"Rendering frame {frame_index + 1}/{ctx.frame_count}")

@@ -122,6 +122,14 @@ def segment_diagnostic(segment: Any) -> dict[str, Any]:
     }
 
 
+def pathological_repetition(segment: Any) -> bool:
+    """Catch runaway token loops, not legitimate repeated sung syllables."""
+    tokens = [_token(token) for token in str(segment.text).split() if _token(token)]
+    duration = max(.1, float(segment.end) - float(segment.start))
+    dominance = max(Counter(tokens).values(), default=0) / max(1, len(tokens))
+    return len(tokens) >= 40 and dominance >= .8 and len(tokens) / duration >= 10
+
+
 def gauntlet_report(
     diagnostics: list[dict[str, Any]], repaired_words: int, language_mode: str
 ) -> dict[str, Any]:
@@ -130,6 +138,12 @@ def gauntlet_report(
     warnings: list[str] = []
     if unstable:
         warnings.append(f"{len(unstable)} segment(s) remained unstable after adaptive decoding.")
+    for item in diagnostics:
+        if item.get("loopRecovery") == "unresolved":
+            warnings.append(
+                f"Unreliable repeated tokens at {item['start']:.1f}s–{item['end']:.1f}s were omitted; "
+                "review this passage and add any missing lyrics manually."
+            )
     return {
         "task": "transcribe",
         "languageMode": language_mode,

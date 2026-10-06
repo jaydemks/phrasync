@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import base64
 import shutil
 import socket
 import subprocess
@@ -12,6 +13,13 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 from websockets.sync.client import connect
+from .media import ffmpeg_exe
+from .processes import background_flags
+from .encoding import bitrate_bps, rate_control_args
+from .diagnostics import log_event
+from .footage import effects_enabled
+from .audio_spectrum import SpectrumSource
+from .storage import get_av_asset
 
 
 ProgressCallback = Callable[[float, str], None]
@@ -92,6 +100,57 @@ class _DevTools:
         self.socket.close()
 
 
+def _encode_canvas_ffmpeg(devtools, project, path, *, width, height, fps, frame_count,
+                          envelope, progress=None, cancel_check=None):
+    """Lossless frame transport, bounded memory, no browser codec dependency."""
+    log_event("info", "render", f"FFmpeg canvas encoder: {width}x{height}, {fps} fps, bitrate={bitrate_bps(project) or 'CRF'}")
+    audio = get_av_asset(project.get("audioAssetId")) if project.get("audioAssetId") else None
+    bg = project.get("background") or {}
+    visual_settings = [(clip.get("asset") or {}).get("settings") or {} for clip in bg.get("clips") or []]
+    needs_spectrum = (bg.get("effects") or {}).get("spectrum", 0) > 0 or bg.get("sceneWave") or bg.get("visual") == "equalizer" or any(
+        spec.get("visual") == "equalizer" or spec.get("sceneWave") for spec in visual_settings)
+    start_time = float((project.get("exportRange") or {}).get("in", 0))
+    spectrum = SpectrumSource(audio.path, fps, start_time=start_time) if audio and needs_spectrum else None
+    with tempfile.TemporaryFile() as errors:
+        encoder = subprocess.Popen([
+            ffmpeg_exe(), "-y", "-v", "error", "-f", "image2pipe", "-vcodec", "png",
+            "-framerate", str(fps), "-i", "pipe:0", "-an", "-c:v", "libx264",
+            "-preset", str(project.get("export", {}).get("preset", "medium")),
+            *rate_control_args(project), "-pix_fmt", "yuv420p", "-f", "h264", str(path),
+        ], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=errors, creationflags=background_flags())
+        try:
+            for index in range(frame_count):
+                if cancel_check and cancel_check():
+                    raise RuntimeError("Render cancelled")
+                value = float(envelope[index]) if index < len(envelope) else 0.0
+                bands = spectrum.read(index) if spectrum else []
+                data = devtools.evaluate(
+                    f"(async()=>{{window.__vfExportSpectrum={json.dumps(bands)};await VFExport.renderFrame({start_time + index / fps!r},{value!r});"
+                    "return VFExport.canvas().toDataURL('image/png').split(',')[1];})()"
+                )
+                if not isinstance(data, str):
+                    raise RuntimeError("WebGL did not return a canvas frame")
+                encoder.stdin.write(base64.b64decode(data, validate=True))
+                if progress:
+                    progress(.06 + .82 * (index + 1) / frame_count,
+                             f"Rendering frame {index + 1}/{frame_count} (FFmpeg compatibility encoder)")
+            encoder.stdin.close()
+            if encoder.wait() != 0:
+                errors.seek(0)
+                raise RuntimeError(f"FFmpeg canvas export failed: {errors.read().decode('utf-8', errors='replace')}")
+        except Exception:
+            if encoder.poll() is None:
+                encoder.kill()
+            encoder.wait(timeout=5)
+            path.unlink(missing_ok=True)
+            raise
+        finally:
+            if spectrum:
+                spectrum.close()
+            if encoder.stdin and not encoder.stdin.closed:
+                encoder.stdin.close()
+
+
 def render_webgl_video(
     project: dict[str, Any],
     encoded_path: Path,
@@ -113,7 +172,8 @@ def render_webgl_video(
     clean_project = json.loads(json.dumps(project))
     clean_project.pop("__renderOrigin", None)
     clean_project["audio"] = None
-    bitrate = int(max(2_000_000, min(28_000_000, width * height * fps * 0.14)))
+    custom_bitrate = bitrate_bps(project)
+    bitrate = custom_bitrate or int(max(2_000_000, width * height * fps * 0.14))
     key_interval = max(1, fps * 2)
 
     with tempfile.TemporaryDirectory(prefix="phrasync-webgl-", ignore_cleanup_errors=True) as folder:
@@ -172,8 +232,10 @@ def render_webgl_video(
                 "width": width,
                 "height": height,
                 "fps": fps,
+                "startTime": float((project.get("exportRange") or {}).get("in", 0)),
                 "frames": frame_count,
                 "bitrate": bitrate,
+                "ffmpeg": custom_bitrate is not None or effects_enabled(project),
                 "keyInterval": key_interval,
                 "envelope": envelope,
             }
@@ -183,20 +245,25 @@ def render_webgl_video(
               window.__vfEncodeState = { progress: 0, done: false, error: null };
               (async () => {
                 try {
-                  if (!window.VideoEncoder || !window.VideoFrame) {
-                    throw new Error('This Chrome/Edge build does not provide WebCodecs.');
-                  }
                   await VFExport.prepare(cfg.width, cfg.height, cfg.project);
+                  if (cfg.ffmpeg || !window.VideoEncoder || !window.VideoFrame) {
+                    window.__vfEncodeState.fallback = true;
+                    window.__vfEncodeState.done = true; return;
+                  }
                   const encoderConfig = {
-                    codec: 'avc1.640028', width: cfg.width, height: cfg.height,
+                    codec: 'avc1.640034', width: cfg.width, height: cfg.height,
                     bitrate: cfg.bitrate, framerate: cfg.fps,
                     avc: { format: 'annexb' }, latencyMode: 'quality'
                   };
-                  const support = await VideoEncoder.isConfigSupported(encoderConfig);
-                  if (!support.supported) {
-                    encoderConfig.codec = 'avc1.42001f';
-                    const fallback = await VideoEncoder.isConfigSupported(encoderConfig);
-                    if (!fallback.supported) throw new Error('H.264 WebCodecs encoding is unavailable.');
+                  let supported = false;
+                  for (const codec of ['avc1.640034', 'avc1.640033', 'avc1.640028', 'avc1.420034']) {
+                    encoderConfig.codec = codec;
+                    try { if ((await VideoEncoder.isConfigSupported(encoderConfig)).supported) { supported = true; break; } }
+                    catch (_) {}
+                  }
+                  if (!supported) {
+                    window.__vfEncodeState.fallback = true;
+                    window.__vfEncodeState.done = true; return;
                   }
                   const chunks = [];
                   const encoder = new VideoEncoder({
@@ -211,7 +278,7 @@ def render_webgl_video(
                   const duration = Math.round(1000000 / cfg.fps);
                   for (let index = 0; index < cfg.frames; index += 1) {
                     if (window.__vfEncodeState.cancel) throw new Error('Render cancelled');
-                    await VFExport.renderFrame(index / cfg.fps, cfg.envelope[index] || 0);
+                    await VFExport.renderFrame(cfg.startTime + index / cfg.fps, cfg.envelope[index] || 0);
                     const frame = new VideoFrame(VFExport.canvas(), {
                       timestamp: Math.round(index * 1000000 / cfg.fps), duration
                     });
@@ -251,8 +318,15 @@ def render_webgl_video(
                 if progress:
                     progress(0.06 + value * 0.82, f"Rendering WebGL frame {max(1, int(value * frame_count))}/{frame_count}")
                 if state.get("done"):
-                    if state.get("error"):
-                        raise RuntimeError(f"WebGL export failed: {state['error']}")
+                    if state.get("fallback") or state.get("error"):
+                        reason = state.get("error") or ("custom bitrate requested" if custom_bitrate else "browser H.264 unavailable")
+                        log_event("info" if custom_bitrate else "warning", "render", f"Using FFmpeg canvas export: {reason}")
+                        # Prepare again after a browser codec error; keep the scene and dimensions intact.
+                        devtools.evaluate("VFExport.prepare(" + str(width) + "," + str(height) + "," + json.dumps(clean_project) + ")")
+                        _encode_canvas_ffmpeg(devtools, project, encoded_path, width=width, height=height,
+                                              fps=fps, frame_count=frame_count, envelope=envelope,
+                                              progress=progress, cancel_check=cancel_check)
+                        return
                     break
                 time.sleep(0.25)
 

@@ -1,16 +1,17 @@
 "use strict";
 
 function initParticles(width, height) {
-  const key = `${width}x${height}`;
+  const key = `${width}x${height}:${project.background.sceneSeed || 1337}`;
   if (key === lastParticleSize && particles.length) return;
   lastParticleSize = key;
   const count = Math.max(35, Math.round(width * height / 11000));
-  particles = Array.from({ length: count }, () => ({
-    x: Math.random() * width,
-    y: Math.random() * height,
-    r: .5 + Math.random() * 2.2,
-    speed: .15 + Math.random() * .55,
-    phase: Math.random() * Math.PI * 2
+  const rand = n => { const x=Math.sin(n*127.1+(project.background.sceneSeed||1337))*43758.5453; return x-Math.floor(x); };
+  particles = Array.from({ length: count }, (_,i) => ({
+    x: rand(i*5+1) * width,
+    y: rand(i*5+2) * height,
+    r: .5 + rand(i*5+3) * 2.2,
+    speed: .15 + rand(i*5+4) * .55,
+    phase: rand(i*5+5) * Math.PI * 2
   }));
 }
 function audioAmplitude() {
@@ -24,7 +25,7 @@ function audioAmplitude() {
 }
 
 function resizeVisualCanvas() {
-  const rect = els.visualCanvas.getBoundingClientRect();
+  const rect = (els.visualCanvas.isConnected ? els.visualCanvas : els.stage).getBoundingClientRect();
   // The preview is already scaled inside the editor. Rendering it at a full
   // high-DPI backing resolution wastes millions of pixels per frame in a
   // desktop WebView without improving the exported video.
@@ -45,6 +46,7 @@ function resizeVisualCanvas() {
  * still breathes while the user is only scrubbing.
  */
 function spectrumSnapshot() {
+  if (window.__vfExportSpectrum?.length) return window.__vfExportSpectrum;
   if (!analyser || !frequencyData) return null;
   analyser.getByteFrequencyData(frequencyData);
   const bins = Math.min(64, frequencyData.length);
@@ -67,7 +69,7 @@ function glLayerNeeded() {
   const bg = project.background;
   return Boolean(window.VFSceneGL)
     && (lyric3DEnabled() || Boolean(bg.sceneWave)
-      || (bg.type === "dynamic" && bg.visual === "scene3d"));
+      || (bg.type === "dynamic" && bg.visual === "scene3d" && !VFMedia.enabled()));
 }
 
 /**
@@ -80,7 +82,7 @@ function glLayerNeeded() {
 function drawSceneGL(t, bg, pulse, intensity) {
   if (!window.VFSceneGL) return null;
   const gl = els.glCanvas;
-  const world = bg.type === "dynamic" && bg.visual === "scene3d";
+  const world = bg.type === "dynamic" && bg.visual === "scene3d" && !VFMedia.enabled();
   if (gl.hidden) gl.hidden = false;
   if (els.visualCanvas.hidden !== world) els.visualCanvas.hidden = world;
 
@@ -195,14 +197,12 @@ function drawDynamicVisual(now) {
   if (bg.visual === "particles") {
     ctx.globalCompositeOperation = "screen";
     for (const particle of particles) {
-      particle.x += particle.speed * (.35 + intensity);
-      particle.y -= particle.speed * .23;
-      if (particle.x > width + 4) particle.x = -4;
-      if (particle.y < -4) particle.y = height + 4;
+      const px = (particle.x+t*60*particle.speed*(.35+intensity))%width;
+      const py = ((particle.y-t*60*particle.speed*.23)%height+height)%height;
       const twinkle = .65 + .35 * Math.sin(t * 1.2 + particle.phase);
       ctx.beginPath();
       ctx.fillStyle = `rgba(227,132,255,${.30 + amplitude * .55 + pulse * .16})`;
-      ctx.arc(particle.x, particle.y, particle.r * twinkle * (1 + amplitude + pulse * .5), 0, Math.PI * 2);
+      ctx.arc(px, py, particle.r * twinkle * (1 + amplitude + pulse * .5), 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalCompositeOperation = "source-over";
@@ -214,7 +214,8 @@ function drawDynamicVisual(now) {
     const left = (width - available) / 2;
     const base = height * .91;
     for (let i = 0; i < bars; i++) {
-      const freq = frequencyData ? frequencyData[Math.min(frequencyData.length - 1, 3 + i * 2)] / 255 : .15 + .12 * Math.abs(Math.sin(i * .67 + t * 3));
+      const exported=window.__vfExportSpectrum;
+      const freq = exported?.length ? exported[Math.min(exported.length-1,Math.floor(i*exported.length/bars))] : frequencyData ? frequencyData[Math.min(frequencyData.length - 1, 3 + i * 2)] / 255 : .15 + .12 * Math.abs(Math.sin(i * .67 + t * 3));
       const value = Math.max(.05, freq * (.62 + intensity * .95) * (1 + pulse * .22));
       const barHeight = height * .34 * value;
       const gradient = ctx.createLinearGradient(0, base - barHeight, 0, base);
@@ -306,17 +307,29 @@ window.VFExport = {
       ? K().beatPulse(lyricT, Number(timing.bpm) || 0, Number(timing.beatOffset) || 0)
       : 0;
     const pulse = Math.max(beat, (Number(amplitude) || 0) * 0.8);
-    const world = bg.type === "dynamic" && bg.visual === "scene3d";
+    const world = bg.type === "dynamic" && bg.visual === "scene3d" && !VFMedia.enabled();
     let scene;
     if (world) scene = drawSceneGL(lyricT, bg, pulse, bg.visualIntensity);
-    else if (bg.type === "dynamic") scene = drawDynamicVisual(virtualTime * 1000);
+    else if (bg.type === "dynamic" && !VFMedia.enabled()) scene = drawDynamicVisual(virtualTime * 1000);
     else scene = prepareWebGLOverlay(lyricT);
     // setLyric intentionally creates only four slabs per UI frame. During an
     // offline export we can finish the current phrase before encoding it.
     renderLyric(false);
     for (let pass = 0; pass < 12; pass += 1) updateLyricFrame(lyricT);
     scene?.render();
-    if (world) return { width: els.glCanvas.width, height: els.glCanvas.height };
+    // Copy WebGL pixels before awaiting media loads/seeks: Chromium may clear
+    // its drawing buffer when the async task yields to the compositor.
+    if (glLayerNeeded() && (!world || VFMedia.usesCanvas())) {
+      this.glSnapshot ||= document.createElement("canvas");
+      if (this.glSnapshot.width !== els.glCanvas.width || this.glSnapshot.height !== els.glCanvas.height) {
+        this.glSnapshot.width = els.glCanvas.width; this.glSnapshot.height = els.glCanvas.height;
+      }
+      const snapshot = this.glSnapshot.getContext("2d");
+      snapshot.clearRect(0, 0, this.glSnapshot.width, this.glSnapshot.height);
+      snapshot.drawImage(els.glCanvas, 0, 0);
+      window.__vfExportGLSnapshot = this.glSnapshot;
+    }
+    if (world && !VFMedia.usesCanvas()) return { width: els.glCanvas.width, height: els.glCanvas.height };
 
     const canvas = this.output;
     const ctx = canvas.getContext("2d", { alpha: false });
@@ -330,7 +343,8 @@ window.VFExport = {
       const dw = sw * scale, dh = sh * scale;
       ctx.drawImage(source, (canvas.width - dw) / 2, (canvas.height - dh) / 2, dw, dh);
     };
-    if (bg.type === "dynamic") ctx.drawImage(els.visualCanvas, 0, 0, canvas.width, canvas.height);
+    if (VFMedia.usesCanvas()) await VFMedia.exportBase(ctx, virtualTime, amplitude);
+    else if (bg.type === "dynamic") ctx.drawImage(els.visualCanvas, 0, 0, canvas.width, canvas.height);
     else if (bg.type === "image") cover(els.backgroundImage);
     else if (bg.type === "video") {
       const video = els.backgroundVideo;
@@ -352,12 +366,13 @@ window.VFExport = {
       ctx.fillStyle = `rgba(0,0,0,${shade})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
-    ctx.drawImage(els.glCanvas, 0, 0, canvas.width, canvas.height);
+    if (!world && glLayerNeeded()) ctx.drawImage(this.glSnapshot, 0, 0, canvas.width, canvas.height);
+    if (VFMedia.usesCanvas()) VFMedia.drawOverlay(ctx, virtualTime, amplitude);
     return { width: canvas.width, height: canvas.height };
   },
 
   canvas() {
     const bg = project.background;
-    return bg.type === "dynamic" && bg.visual === "scene3d" ? els.glCanvas : this.output;
+    return bg.type === "dynamic" && bg.visual === "scene3d" && !VFMedia.enabled() && !VFMedia.usesCanvas() ? els.glCanvas : this.output;
   }
 };

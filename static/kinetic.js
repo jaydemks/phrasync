@@ -155,8 +155,10 @@
     }
   };
 
+  PRESETS.spiral = { ...PRESETS["focus-word"], id:"spiral", label:"Spiral Flight", enter:"fade", lead:0, tail:.25, description:"Words orbit inward from depth and resolve at the sung syllable." };
+  PRESETS.constellation = { ...PRESETS["neon-flux"], id:"constellation", label:"Word Constellation", layout:"focus", pendingAlpha:.18, lead:0, description:"Scattered words surround the current word, held at the centre." };
   const PRESET_ORDER = [
-    "kinetic-slam", "neon-flux", "focus-word", "cascade", "wipe-fill", "bold-stack", "minimal"
+    "kinetic-slam", "neon-flux", "focus-word", "cascade", "wipe-fill", "bold-stack", "minimal", "spiral", "constellation"
   ];
 
   const LEGACY_PRESETS = { "center-punch": "kinetic-slam", "karaoke": "wipe-fill", "neon": "neon-flux" };
@@ -414,6 +416,18 @@
       state.glow = Math.min(1, state.glow + 0.25 * pulse);
     }
 
+    if (spec.label === "Spiral Flight") {
+      const progress = clamp((t-start)/Math.min(.45,Math.max(.08,end-start)*.7));
+      const radius = (1-ease.outCubic(progress))*2.8, angle=(1-progress)*Math.PI*3;
+      state.dx += Math.cos(angle)*radius; state.dy += Math.sin(angle)*radius;
+      state.scale *= .25+.75*ease.outCubic(progress); state.rotate += (1-progress)*-35;
+    } else if (spec.label === "Word Constellation" && state.role !== "active") {
+      const phase=(word.index+1)*2.399963 + cue.start*.17;
+      state.dx += Math.cos(phase)*(2.2+(word.index%3)*.8);
+      state.dy += Math.sin(phase)*(1.2+(word.index%2)*.7);
+      state.scale *= .32+(word.index%3)*.07; state.opacity *= .5;
+      state.rotate = Math.sin(phase)*12;
+    }
     state.opacity = clamp(state.opacity);
     return state;
   }

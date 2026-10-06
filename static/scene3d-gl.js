@@ -615,6 +615,8 @@ function updateWaveField(points, t, camZ, spectrum, colour, intensity, pulse) {
  * drives line breaking, depth staggering, size and the way words arrive.
  */
 const PERSONALITY = {
+  "spiral": {charsPerLine:1,sizeBoost:2,depthStep:0,arrival:"spiral",overshoot:0,spin:0,farBoost:1},
+  "constellation": {charsPerLine:1,sizeBoost:1.7,depthStep:1.5,arrival:"scatter",overshoot:0,spin:0,farBoost:1},
   "kinetic-slam": {
     charsPerLine: 15, sizeBoost: 1.0, depthStep: 0, arrival: "punch",
     overshoot: 0.34, spin: 0.0, farBoost: 1.0
@@ -1011,7 +1013,8 @@ class Odyssey {
       width += cost;
     }
     if (line.length) wrapped.push(line);
-    const lineCount = Math.max(1, wrapped.length);
+    const spatialFocus = spec?.id === "spiral" || spec?.id === "constellation";
+    const lineCount = spatialFocus ? 1 : Math.max(1, wrapped.length);
 
     let unit = shortView * (style.fontSize / 1080) * 2.6 * person.sizeBoost;
     let widest = 0;
@@ -1042,10 +1045,10 @@ class Odyssey {
       row.forEach((word, i) => {
         slots.set(word.key, {
           x: cursor + widths[i] / 2,
-          y: (lineCount - 1) * unit * 0.58 - lineIndex * unit * 1.16,
+          y: spatialFocus ? 0 : (lineCount - 1) * unit * 0.58 - lineIndex * unit * 1.16,
           // Lines can sit at different depths, which is what gives Cascade and
           // Bold Stack a shape you can read as 3D rather than as a flat card.
-          z: -lineIndex * person.depthStep,
+          z: spatialFocus ? 0 : -lineIndex * person.depthStep,
           line: lineIndex
         });
         cursor += widths[i] + gap;
@@ -1164,7 +1167,16 @@ class Odyssey {
         // the same randomly chosen direction, so switching style changed
         // nothing you could see.
         const depth = 44 * person.farBoost;
-        if (person.arrival === "punch") {
+        if (person.arrival === "spiral") {
+          const p=clamp((t-entry.wordStart)/.55), radius=(1-p)*12, angle=(1-p)*Math.PI*4;
+          x += Math.cos(angle)*radius; y += Math.sin(angle)*radius; z -= (1-p)*45;
+          scaleBoost = .4+.6*p; yaw = Math.sin(angle)*.2;
+        } else if (person.arrival === "scatter") {
+          const phase=(entry.wordIndex+1)*2.399963+cue.start*.17;
+          const other=entry.state.role !== "active";
+          if (other) { x += Math.cos(phase)*17; y += Math.sin(phase)*8; z -= 10+(entry.wordIndex%4)*9; scaleBoost=.4; }
+          else { x=Number(style.offset3DX)||0; y=groundClearance+layout.blockHalf+Number(style.offset3DY||0); z=boardZ; }
+        } else if (person.arrival === "punch") {
           z -= back * depth;
           scaleBoost = 1 + person.overshoot * back;
           yaw = clampAngle(((hash >> 8) % 100 / 100 - 0.5) * 0.5 * back, 0.3);
@@ -1253,7 +1265,7 @@ class Odyssey {
   }
 }
 
-let instance = null;
+const instances = new WeakMap();
 
 window.VFSceneGL = {
   THREE,
@@ -1261,8 +1273,8 @@ window.VFSceneGL = {
   DIRECTIONS,
   ready: true,
   get(canvas) {
-    if (!instance || instance.canvas !== canvas) instance = new Odyssey(canvas);
-    return instance;
+    if (!instances.has(canvas)) instances.set(canvas, new Odyssey(canvas));
+    return instances.get(canvas);
   }
 };
 window.dispatchEvent(new Event("vfscenegl-ready"));

@@ -1,0 +1,22 @@
+Phrasync 0.4.5
+
+NEW EDITING TOOLS
+- Media bin with drag-and-drop images, videos and built-in 2D/3D visuals on up to four background tracks.
+- Clip trim, split, duplicate, removal, pan/zoom, opacity and fade/wipe/slide transitions. Right-click quick controls. Removing a track preserves original media in the bin.
+- Beat/transient-synced shake, pendulum, flash, zoom drop and light pulse. Black-and-white, color gradients, particles and an audio-reactive spectrum overlay.
+- Spiral Flight and Word Constellation typography in both 2D and 3D.
+- Timeline panning, scrollbar and zoom at the playhead. Duplicate lyric cues and keep your scroll position when adding text.
+
+EXPORT AND PROJECT FIXES
+- Set video export IN/OUT with I/O, draggable markers or exact seconds; render only that interval with matching audio and visuals.
+- Automatic or custom timeline duration, saved with the project.
+- File menu and native Windows dialogs for New/Load/Save; choose where subtitle exports are saved.
+- 4K compatibility encoder when browser H.264 is unavailable. Custom video bitrate, including 150 Mbps.
+- Select an export folder before rendering. One named MP4 output per job, without a duplicate copy in another render folder.
+- Extreme repeated-token transcription loops are retried separately; unreliable passages are flagged instead of disrupting later lyric timings.
+
+OTHER CHANGES
+- App version, author contacts and optional Buy Me a Coffee support in Settings.
+- Welcome popup includes optional support and Don't show this again.
+
+Phrasync remains free. Footage audio is muted; the song/source audio is the master track. Transcription requires manual review. Bright flash effects are optional and may affect photosensitive viewers.

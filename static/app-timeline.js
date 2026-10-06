@@ -23,6 +23,7 @@ async function ensureAnalysis(force = false) {
     });
     project.timing.bpm = analysis.bpm || 0;
     project.timing.beatOffset = analysis.beatOffset || 0;
+    project.background.effectOnsets = analysis.percussiveOnsets?.length ? analysis.percussiveOnsets : analysis.onsets || [];
     updateSyncSummary();
     timeline?.draw();
     scheduleSave();
@@ -253,6 +254,8 @@ function timelineState() {
     cues: project.cues,
     selectedCueId,
     duration: projectDuration(),
+    exportRange: project.exportRange,
+    exportOffset: project.timing.offset || 0,
     analysis,
     audioLoaded: Boolean(project.audioAssetId),
     snap: project.timing.snapMode !== "off",
@@ -262,11 +265,27 @@ function timelineState() {
 }
 
 function setupTimeline() {
+  setupExportRange();
+  const scrollbar = document.getElementById("timelineScroll");
+  const track = document.getElementById("timelineScrollTrack");
+  let expectedScroll = 0;
+  const syncScroll = (start, span) => {
+    if (!timeline) return;
+    const width = scrollbar.clientWidth;
+    const max = Math.max(0, timeline.duration() - span * .25, start);
+    const size = `${width * (1 + max / span)}px`;
+    if (track.style.width !== size) track.style.width = size;
+    expectedScroll = Math.max(0, start) / span * width;
+    if (Math.abs(scrollbar.scrollLeft - expectedScroll) > 1) scrollbar.scrollLeft = expectedScroll;
+    els.followToggle.classList.toggle("off", !timeline.follow);
+    renderFootageLane();
+  };
   timeline = window.VFTimeline.create({
     canvas: els.timelineCanvas,
     host: els.timelineWrap,
     getState: timelineState,
     getTime: () => lyricTime(),
+    onView: syncScroll,
     onSeek: time => {
       timeline.follow = false;
       els.followToggle.classList.add("off");
@@ -295,9 +314,20 @@ function setupTimeline() {
     }
   });
   timeline.fitAll();
+  scrollbar.addEventListener("scroll", () => {
+    if (Math.abs(scrollbar.scrollLeft - expectedScroll) < 2) return;
+    timeline.follow = false;
+    timeline.setView(scrollbar.scrollLeft / Math.max(1, scrollbar.clientWidth) * timeline.viewSpan, timeline.viewSpan);
+  });
 
-  els.zoomInButton.addEventListener("click", () => timeline.zoomAt(0.6, timeline.width / 2));
-  els.zoomOutButton.addEventListener("click", () => timeline.zoomAt(1.7, timeline.width / 2));
+  const zoomPlayhead = factor => {
+    const time = currentPlaybackTime() - (project.timing.offset || 0);
+    const span = Math.max(.6, Math.min(timeline.duration() + 2, timeline.viewSpan * factor));
+    timeline.follow = false;
+    timeline.setView(time - span / 2, span);
+  };
+  els.zoomInButton.addEventListener("click", () => zoomPlayhead(.6));
+  els.zoomOutButton.addEventListener("click", () => zoomPlayhead(1.7));
   els.zoomFitButton.addEventListener("click", () => timeline.fitAll());
   els.followToggle.addEventListener("click", () => {
     timeline.follow = !timeline.follow;
@@ -316,7 +346,7 @@ function setupTimeline() {
   });
   els.dockGrip.addEventListener("pointermove", event => {
     if (!dockDrag) return;
-    const height = Math.max(148, Math.min(430, dockDrag.height + (dockDrag.y - event.clientY)));
+    const height = Math.max(326, Math.min(480, dockDrag.height + (dockDrag.y - event.clientY)));
     els.timelineDock.style.setProperty("--dock-height", `${height}px`);
     timeline.resize();
   });

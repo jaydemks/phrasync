@@ -207,8 +207,15 @@
       const canvas = this.canvas;
 
       canvas.addEventListener("pointerdown", event => {
+        if (event.button !== 0 && event.button !== 1) return;
         canvas.setPointerCapture(event.pointerId);
         const { x, y } = this.localPoint(event);
+        if (event.button === 1) {
+          event.preventDefault(); this.follow = false;
+          this.drag = { type: "pan", originX: x, originStart: this.viewStart };
+          canvas.style.cursor = "grabbing";
+          this.onView(this.viewStart, this.viewSpan); return;
+        }
         const hit = this.hitTest(x, y);
         if (!hit) return;
 
@@ -275,14 +282,17 @@
 
       const release = event => {
         if (!this.drag) return;
-        const wasEdit = this.drag.type !== "scrub";
+        const wasEdit = !["scrub", "pan"].includes(this.drag.type);
         this.drag = null;
+        if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
         canvas.style.cursor = "default";
         if (wasEdit) this.onChange("cues");
         this.draw();
       };
       canvas.addEventListener("pointerup", release);
       canvas.addEventListener("pointercancel", release);
+      canvas.addEventListener("lostpointercapture", release);
+      canvas.addEventListener("auxclick", event => { if (event.button === 1) event.preventDefault(); });
 
       canvas.addEventListener("dblclick", event => {
         const { x, y } = this.localPoint(event);
@@ -313,6 +323,10 @@
 
     updateDrag(x, event) {
       const drag = this.drag;
+      if (drag.type === "pan") {
+        this.setView(drag.originStart - (x - drag.originX) / Math.max(1, this.width) * this.viewSpan, this.viewSpan);
+        return;
+      }
       drag.noSnap = event.altKey;
       const pointerTime = this.xToTime(x);
       const delta = pointerTime - drag.startTime;
@@ -423,6 +437,7 @@
       this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
       this.waveCache.key = "";
       this.draw();
+      this.onView(this.viewStart, this.viewSpan);
     }
 
     refreshTheme() {
@@ -446,6 +461,11 @@
     draw(time) {
       const ctx = this.ctx;
       const state = this.getState();
+      const viewKey = `${this.width}:${state.duration}:${this.viewStart}:${this.viewSpan}:${this.follow}`;
+      if (viewKey !== this._viewKey) {
+        this._viewKey = viewKey;
+        this.onView(this.viewStart, this.viewSpan);
+      }
       const theme = this.theme;
       const tops = this.laneTops;
       const playhead = time === undefined ? this.getTime() : time;
@@ -457,6 +477,15 @@
       this.drawWave(ctx, theme, tops, state);
       this.drawPhrases(ctx, theme, tops, state, playhead);
       this.drawWords(ctx, theme, tops, state, playhead);
+      if (state.exportRange) {
+        const left=this.timeToX(state.exportRange.in-(state.exportOffset||0)),right=this.timeToX(state.exportRange.out-(state.exportOffset||0));
+        ctx.fillStyle="#9883ff22";ctx.fillRect(left,0,right-left,this.height);
+        ctx.strokeStyle="#b5a6ff";ctx.lineWidth=2;
+        for (const [x,label] of [[left,"IN"],[right,"OUT"]]) {
+          ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,this.height);ctx.stroke();
+          ctx.fillStyle="#b5a6ff";ctx.fillText(label,x+4,12);
+        }
+      }
       this.drawPlayhead(ctx, theme, tops, playhead);
     }
 

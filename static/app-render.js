@@ -1,6 +1,8 @@
 "use strict";
 
 let completedRenderJob = null;
+let selectedRenderDirectory = null;
+let renderStarting = false;
 
 function desktopExportApi() {
   return window.pywebview?.api || null;
@@ -12,27 +14,33 @@ async function openRenderDialog() {
     return;
   }
   resetRenderModal();
+  els.renderMessage.textContent = project.exportRange
+    ? `Export: ${formatTime(project.exportRange.in)} → ${formatTime(project.exportRange.out)}`
+    : t("Full timeline");
   completedRenderJob = null;
   if (!els.renderDialog.open) els.renderDialog.showModal();
   els.chooseRenderDirectory.hidden = !IS_DESKTOP_HOST;
   els.openRenderDirectory.hidden = !IS_DESKTOP_HOST;
   els.openDefaultRenderDirectory.hidden = !IS_DESKTOP_HOST;
+  els.renderDirectoryInput.hidden = IS_DESKTOP_HOST;
+  els.downloadRender.textContent = t("Show exported MP4");
   if (IS_DESKTOP_HOST) {
     try {
-      els.renderDirectory.textContent = await desktopExportApi().get_render_directory();
+      selectedRenderDirectory = await desktopExportApi().get_selected_render_directory();
+      els.renderDirectory.textContent = selectedRenderDirectory || t("Choose where to save your exports before starting a render.");
     } catch (error) {
       els.renderDirectory.textContent = t("Export folder unavailable");
       toast(error.message, "error");
     }
   } else {
-    els.renderDirectory.textContent = t("Browser Downloads folder");
+    els.renderDirectory.textContent = t("Choose where to save your exports before starting a render.");
   }
 }
 
 async function chooseRenderDirectory() {
   try {
     const directory = await desktopExportApi().choose_render_directory();
-    if (directory) els.renderDirectory.textContent = directory;
+    if (directory) { selectedRenderDirectory = directory; els.renderDirectory.textContent = directory; }
   } catch (error) {
     toast(error.message, "error");
   }
@@ -55,11 +63,11 @@ async function openDefaultRenderDirectory() {
 }
 
 async function downloadRender(event) {
-  if (!IS_DESKTOP_HOST) return;
   event.preventDefault();
   if (!completedRenderJob) return;
   try {
-    const saved = await desktopExportApi().save_render_as(completedRenderJob);
+    const saved = IS_DESKTOP_HOST ? await desktopExportApi().show_render_file(completedRenderJob)
+      : (await api(`/api/render/${completedRenderJob}/show`, { method: "POST" })).path;
     if (saved) toast(`${t("MP4 saved to")} ${saved}`, "success");
   } catch (error) {
     toast(error.message, "error");
@@ -79,7 +87,12 @@ function resetRenderModal() {
 }
 
 async function startRender() {
-  if (currentRenderJob) return;
+  if (currentRenderJob || renderStarting) return;
+  const directory = IS_DESKTOP_HOST ? selectedRenderDirectory : els.renderDirectoryInput.value.trim();
+  if (!directory) {
+    toast(t("Choose where to save your exports before starting a render."), "error"); return;
+  }
+  renderStarting = true;
   els.confirmRender.hidden = true;
   els.cancelRender.hidden = false;
   els.chooseRenderDirectory.disabled = true;
@@ -90,7 +103,7 @@ async function startRender() {
     const response = await api("/api/render", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: project.title, project: exportProject })
+      body: JSON.stringify({ title: project.title, project: exportProject, outputDirectory: directory })
     });
     currentRenderJob = response.id;
     pollRender();
@@ -101,7 +114,7 @@ async function startRender() {
     els.renderError.hidden = false;
     els.renderError.textContent = error.message;
     els.renderMessage.textContent = "Could not start render.";
-  }
+  } finally { renderStarting = false; }
 }
 
 async function pollRender() {
@@ -119,8 +132,8 @@ async function pollRender() {
       els.cancelRender.hidden = true;
       els.chooseRenderDirectory.disabled = false;
       els.renderResult.hidden = false;
-      els.downloadRender.href = job.result.downloadUrl;
-      els.downloadRender.download = job.result.filename;
+      els.downloadRender.href = "#";
+      els.downloadRender.removeAttribute("download");
       if (job.result.path) els.renderDirectory.textContent = job.result.path.replace(/[\\/][^\\/]+$/, "");
       els.renderMeta.textContent = `${job.result.width} × ${job.result.height} · ${job.result.fps} fps · ${job.result.duration.toFixed(2)}s · rendered in ${job.result.elapsed.toFixed(1)}s`;
       if (job.postflight && !job.postflight.ok) showReport(job.postflight, "Post-render critic");

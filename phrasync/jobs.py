@@ -72,12 +72,14 @@ class JobManager:
         )
 
     def create_render(self, project: dict[str, Any], title: str = "phrasync_export", output_dir: Path | None = None) -> Job:
+        if output_dir is None or not output_dir.is_dir():
+            raise ValueError("Choose an export folder before starting a render")
         job = Job(id=uuid.uuid4().hex, kind="render")
         log_event("info", "render", f"Queued job {job.id[:8]}")
         with self.lock:
             self.jobs[job.id] = job
             self._save(job)
-        self.executor.submit(self._run_render, job.id, project, title, output_dir or RENDERS_DIR)
+        self.executor.submit(self._run_render, job.id, project, title, output_dir)
         return job
 
     def create_transcription(
@@ -222,6 +224,8 @@ class JobManager:
         job = self.get(job_id)
         if not job:
             return
+        output_path = None
+        output_reserved = False
         try:
             report = preflight_project(project)
             with self.lock:
@@ -239,8 +243,18 @@ class JobManager:
                 job.message = "Starting renderer"
                 self._save(job)
 
-            output_name = f"{_safe_title(title)}_{job.id[:8]}.mp4"
-            output_path = output_dir / output_name
+            base = _safe_title(title)
+            index = 1
+            while True:
+                output_name = f"{base}{f' ({index})' if index > 1 else ''}.mp4"
+                output_path = output_dir / output_name
+                try:
+                    with output_path.open("xb"):
+                        pass
+                    output_reserved = True
+                    break
+                except FileExistsError:
+                    index += 1
 
             def update(value: float, message: str) -> None:
                 with self.lock:
@@ -270,6 +284,8 @@ class JobManager:
                 self._save(job)
             log_event("info" if postflight.ok else "error", "render", f"Job {job.id[:8]} {'complete' if postflight.ok else 'failed postflight'}")
         except Exception as exc:
+            if output_reserved and output_path is not None and output_path.exists() and output_path.stat().st_size == 0:
+                output_path.unlink()
             log_exception("render", exc)
             with self.lock:
                 job.state = "cancelled" if job.cancel_requested else "failed"

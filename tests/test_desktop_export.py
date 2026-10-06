@@ -1,9 +1,56 @@
 from pathlib import Path
 from unittest.mock import Mock
+import pytest
 
 import webview
 
 from phrasync.desktop_export import DesktopExportBridge
+
+
+def test_author_links_open_only_https_allowlisted_sites(monkeypatch):
+    opened = Mock(return_value=True)
+    monkeypatch.setattr("phrasync.desktop_export.webbrowser.open", opened)
+    bridge = DesktopExportBridge()
+    assert bridge.open_external_url("https://buymeacoffee.com/jaydemks")
+    assert bridge.open_external_url("https://www.giovannidemiccoli.com")
+    for url in ["file:///C:/Windows", "javascript:alert(1)", "https://github.com.evil.test", "https://github.com@evil.test", "http://github.com/jaydemks"]:
+        with pytest.raises(ValueError):
+            bridge.open_external_url(url)
+    assert opened.call_count == 2
+
+
+@pytest.mark.parametrize("extension", ["json", "srt", "vtt", "ass", "lrc"])
+def test_native_text_save_uses_chosen_destination_and_preserves_unicode(tmp_path, extension):
+    bridge = DesktopExportBridge()
+    bridge._window = Mock()
+    target = tmp_path / f"chosen.{extension}"
+    bridge._window.create_file_dialog.return_value = (str(target),)
+    assert bridge.save_text_file("日本語 · lyrics", f"suggested.{extension}", extension) == str(target)
+    assert target.read_text(encoding="utf-8") == "日本語 · lyrics"
+    assert bridge._window.create_file_dialog.call_args.args[0] == webview.FileDialog.SAVE
+
+
+def test_native_project_load_and_dialog_cancellation(tmp_path):
+    bridge = DesktopExportBridge()
+    bridge._window = Mock()
+    target = tmp_path / "project.phrasync.json"
+    target.write_text('{"title":"日本語"}', encoding="utf-8-sig")
+    bridge._window.create_file_dialog.return_value = (str(target),)
+    assert bridge.load_project_file() == {"path": str(target), "content": '{"title":"日本語"}'}
+    assert bridge._window.create_file_dialog.call_args.args[0] == webview.FileDialog.OPEN
+    bridge._window.create_file_dialog.return_value = None
+    assert bridge.load_project_file() is None
+    assert bridge.save_text_file("do not overwrite", target.name, "json") is None
+    assert target.read_text(encoding="utf-8-sig") == '{"title":"日本語"}'
+
+
+def test_native_save_adds_extension_and_rejects_unsupported_format(tmp_path):
+    bridge = DesktopExportBridge()
+    bridge._window = Mock()
+    bridge._window.create_file_dialog.return_value = (str(tmp_path / "subtitles"),)
+    assert bridge.save_text_file("lyrics", "suggested.srt", "srt") == str(tmp_path / "subtitles.srt")
+    with pytest.raises(ValueError):
+        bridge.save_text_file("unsafe", "bad.exe", "exe")
 
 
 def test_choose_directory_and_save_completed_mp4(tmp_path, monkeypatch):

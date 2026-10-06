@@ -82,6 +82,8 @@ PRESETS: dict[str, Preset] = {
 }
 
 LEGACY_PRESETS = {"center-punch": "kinetic-slam", "karaoke": "wipe-fill", "neon": "neon-flux"}
+PRESETS["spiral"] = replace(PRESETS["focus-word"], id="spiral", label="Spiral Flight", enter="fade", lead=0, tail=.25)
+PRESETS["constellation"] = replace(PRESETS["neon-flux"], id="constellation", label="Word Constellation", layout="focus", pending_alpha=.18, lead=0)
 
 
 def resolved_preset(style: dict[str, Any]) -> Preset:
@@ -326,6 +328,22 @@ def word_state(
         state.scale *= 1 + 0.035 * pulse
         state.glow = min(1.0, state.glow + 0.25 * pulse)
 
+    if spec.id == "spiral":
+        progress = clamp((t-start)/min(.45, max(.08,end-start)*.7))
+        radius = (1-ease_out_cubic(progress))*2.8
+        angle = (1-progress)*math.pi*3
+        state.dx += math.cos(angle)*radius
+        state.dy += math.sin(angle)*radius
+        state.scale *= .25+.75*ease_out_cubic(progress)
+        state.rotate += (1-progress)*-35
+    elif spec.id == "constellation" and state.role != "active":
+        index = word.get("index", 0)
+        phase = (index+1)*2.399963 + cue_start*.17
+        state.dx += math.cos(phase)*(2.2+(index%3)*.8)
+        state.dy += math.sin(phase)*(1.2+(index%2)*.7)
+        state.scale *= .32+(index%3)*.07
+        state.opacity *= .5
+        state.rotate = math.sin(phase)*12
     state.opacity = clamp(state.opacity)
     return state
 

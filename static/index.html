@@ -14,6 +14,12 @@
       <div class="brand" aria-label="Phrasync">
         <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="7" y="11" width="19" height="5.5" rx="2.75"/><rect x="12" y="23.5" width="21" height="5.5" rx="2.75"/><rect class="ph" x="20.5" y="7" width="3" height="26" rx="1.5"/></svg>
         <div><strong>PHRA<span>//</span>SYNC</strong><small>local lyric &amp; subtitle studio</small></div>
+        <details id="projectMenu" class="project-menu"><summary>File</summary><nav aria-label="Project commands">
+          <button type="button" id="resetProjectButton">New project</button>
+          <button type="button" id="loadProjectButton">Load project</button>
+          <button type="button" id="saveProjectButton">Save project</button>
+          <small>Ctrl+N · Ctrl+O · Ctrl+S</small>
+        </nav></details>
       </div>
       <label class="project-name"><span>Project</span><input id="projectTitle" value="Untitled lyric video" maxlength="80" /></label>
       <div class="top-actions">
@@ -175,6 +181,29 @@
               </button>
             </div>
 
+            <details id="footageSection" class="footage-panel">
+              <summary>Footage & effects</summary>
+              <label class="toggle-row"><input id="footageEnable" type="checkbox" /><span>Use footage timeline</span></label>
+              <input id="footageInput" class="visually-hidden" type="file" accept="image/*,video/mp4,video/webm,.mp4,.webm" multiple />
+              <button id="footageAdd" class="button wide" type="button">Add images / videos</button>
+              <div class="footage-actions"><button id="addVisualClip" type="button">Add current visual to bin</button><button id="addVisualTrack" type="button">Add background track</button></div>
+              <div id="backgroundTrackManager" class="background-track-manager" aria-label="Background tracks"></div>
+              <p class="microcopy">Select an integrated visual above, add it to the bin, then drag it onto a track. Higher tracks appear over lower ones; adjust opacity and transitions to mix them.</p>
+              <p class="microcopy">Import into the media bin, then drag a file onto the background timeline.</p>
+              <div id="footageImportStatus" role="status" aria-live="polite" hidden></div>
+              <div id="footageBin" class="footage-bin" role="region" aria-label="Media bin"></div>
+              <p class="microcopy">Clip changes do not alter the original files. Video sound is muted; the song remains the audio track.</p>
+              <select id="footageSelect" aria-label="Select a clip"></select>
+              <div id="footageClipEditor" class="two-columns" hidden></div>
+              <div id="clipLayerSettings" class="two-columns" hidden>
+                <label class="field"><span>Track</span><select id="clipTrack"></select></label>
+                <label class="field"><span>Transition</span><select id="clipTransition"><option value="cut">Cut</option><option value="fade">Crossfade</option><option value="wipe">Wipe</option><option value="slide">Slide</option></select></label>
+              </div>
+              <p class="microcopy">Pan uses -1 to +1. Zoom above 1 creates space for panning. Gaps show the background color; overlapping clips use the latest start.</p>
+              <div id="footageEffects" class="two-columns"></div>
+              <label class="field"><span>Effect trigger</span><select id="fxTrigger"><option value="beat">Beat grid</option><option value="transient">Detected audio transients</option></select></label>
+              <p class="microcopy">Flash warning: bright flashes can affect photosensitive viewers. Keep intensity low or leave this effect off.</p>
+            </details>
             <div class="asset-grid">
               <div>
                 <input class="visually-hidden" id="ocrInput" type="file" accept="image/*,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff" />
@@ -266,6 +295,8 @@
             </label>
             <label class="field"><span>Style preset</span>
               <select id="stylePreset">
+                <option value="spiral">Spiral Flight</option>
+                <option value="constellation">Word Constellation</option>
                 <option value="kinetic-slam">Kinetic Slam: high-impact words</option>
                 <option value="neon-flux">Neon Flux: blur-to-focus glow</option>
                 <option value="focus-word">Focus Word: one word at a time</option>
@@ -378,6 +409,8 @@
             <label class="field"><span>Quality</span>
               <select id="qualitySelect"><option value="18">High / CRF 18</option><option value="21">Balanced / CRF 21</option><option value="15">Very high / CRF 15</option></select>
             </label>
+            <label class="field"><span>Video rate control</span><select id="rateControlSelect"><option value="auto">Automatic quality (CRF)</option><option value="bitrate">Custom bitrate (Mbps)</option></select></label>
+            <label class="field" id="bitrateField" hidden><span>Video bitrate (Mbps)</span><input id="bitrateInput" type="number" min="0.001" step="any" value="50" /><small>For example: 50 or 150 Mbps. Higher rates create larger files.</small></label>
             <label class="toggle-row"><input id="safeAreaToggle" type="checkbox" /><span><b>Show title-safe guide</b></span></label>
           </div>
         </details>
@@ -398,6 +431,9 @@
             <canvas id="glCanvas" hidden></canvas>
             <img id="backgroundImage" alt="" hidden />
             <video id="backgroundVideo" muted loop playsinline hidden></video>
+            <canvas id="footageCanvas" hidden></canvas>
+            <span id="footagePreviewStatus" class="footage-preview-status" role="status" hidden>Preparing video…</span>
+            <canvas id="effectsCanvas" hidden></canvas>
             <div id="stageShade"></div>
             <div id="stageTexture"></div>
             <div class="safe-area" id="safeArea" hidden></div>
@@ -455,9 +491,6 @@
 
         <div class="project-actions">
           <input class="visually-hidden" id="projectInput" type="file" accept=".json,.phrasync,.verseframe" />
-          <button type="button" id="loadProjectButton">Load project</button>
-          <button type="button" id="saveProjectButton">Save project</button>
-          <button type="button" id="resetProjectButton" class="danger-text">Reset</button>
         </div>
       </aside>
     </main>
@@ -479,10 +512,20 @@
           <button class="icon-button" id="zoomInButton" type="button" title="Zoom in (Ctrl+rotella)">＋</button>
           <button class="icon-button" id="zoomFitButton" type="button" title="Show the entire song">⤢</button>
           <button class="chip" id="followToggle" type="button" title="Follow playback"><i></i><span>Follow</span></button>
-          <span class="dock-hint">drag = move · edges = duration · Shift = ripple · Alt = no snap</span>
+          <span class="dock-hint">middle mouse = pan · drag = move · edges = duration · Shift = ripple · Alt = no snap</span>
         </div>
       </div>
       <div class="timeline-canvas-wrap" id="timelineWrap"><canvas id="timelineCanvas"></canvas></div>
+      <div class="footage-lane-title"><strong>Background footage</strong><span>Drag = move · edges = trim · double click = edit</span><div id="footageTools" class="footage-tools" hidden><button id="footageSplit" type="button">Split at playhead</button><button id="footageDuplicate" type="button">Duplicate clip</button><button id="footageRemove" type="button">Remove clip</button></div></div>
+      <div id="footageLane" class="footage-lane" role="region" aria-label="Background footage"></div>
+      <div class="export-range-controls">
+        <button id="markExportIn" type="button">Set IN (I)</button><input id="exportIn" type="number" min="0" step="0.01" aria-label="Export IN seconds">
+        <button id="markExportOut" type="button">Set OUT (O)</button><input id="exportOut" type="number" min="0" step="0.01" aria-label="Export OUT seconds">
+        <button id="clearExportRange" type="button">Full timeline</button><span id="exportRangeSummary"></span>
+        <label>Timeline <select id="timelineDurationMode"><option value="auto">Auto</option><option value="custom">Custom</option></select></label>
+        <input id="timelineDurationInput" type="number" min="0.5" step="0.1" aria-label="Timeline duration seconds"><span>s</span>
+      </div>
+      <div id="timelineScroll" class="timeline-scrollbar" tabindex="0" role="region" aria-label="Scroll timeline"><div id="timelineScrollTrack"></div></div>
       <div class="dock-foot">
         <div class="word-nudge">
           <span id="selectedWordLabel">no word selected</span>
@@ -511,6 +554,8 @@
           <p><strong>Your media stays local.</strong><span>Audio, lyrics, transcripts, projects, and exports are not uploaded to Phrasync.</span></p>
           <p><strong>NVIDIA acceleration is automatic.</strong><span>With a compatible NVIDIA GPU and current driver, transcription uses CUDA; otherwise the interface clearly reports CPU mode.</span></p>
         </div>
+        <a class="button secondary" href="https://buymeacoffee.com/jaydemks" target="_blank" rel="noopener noreferrer" data-external><span aria-hidden="true">☕</span> Buy me a coffee</a>
+        <label class="toggle-row"><input id="onboardingHide" type="checkbox" /><span>Don't show this again</span></label>
       </div>
       <footer><button class="button primary" id="onboardingContinue" type="button">Start creating</button></footer>
     </div>
@@ -528,8 +573,21 @@
 
   <dialog id="settingsDialog" class="modal settings-modal">
     <form method="dialog" class="modal-card">
-      <header><div><span class="eyebrow">LOCAL SETTINGS</span><h2>Integrations</h2></div><button class="icon-button" value="cancel" aria-label="Close">×</button></header>
+      <header><div><span class="eyebrow">PHRASYNC</span><h2>Settings &amp; about</h2></div><button class="icon-button" value="cancel" aria-label="Close">×</button></header>
       <div class="settings-content">
+        <section class="integration-card about-card">
+          <div class="integration-heading"><div><strong>Phrasync</strong><span id="aboutVersion">Version 0.4.5</span></div><span class="integration-badge">FREE · LOCAL</span></div>
+          <p>Local lyric-video and subtitle studio. Transcription, editing and rendering run on your computer.</p>
+          <p><span>Created by</span> <strong>Giovanni De Miccoli</strong></p>
+          <nav class="author-links" aria-label="Developer links">
+            <a href="https://www.giovannidemiccoli.com" target="_blank" rel="noopener noreferrer" data-external><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/><path d="M2 12h20"/></svg><span>Website</span></a>
+            <a href="https://x.com/jaydem_world" target="_blank" rel="noopener noreferrer" data-external><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h5l11 18h-5L4 3Zm0 18L20 3"/></svg><span>X</span></a>
+            <a href="https://www.linkedin.com/in/giodemiccoli/" target="_blank" rel="noopener noreferrer" data-external><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="9" width="3" height="12"/><circle cx="4.5" cy="4.5" r="1.5"/><path d="M10 21V9h3v2c5-5 8-1 8 3v7h-3v-7c0-3-5-3-5 0v7Z"/></svg><span>LinkedIn</span></a>
+            <a href="https://github.com/jaydemks" target="_blank" rel="noopener noreferrer" data-external><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21v-4c-5 1-7-2-7-5 0-2 1-3 2-4L3 3l5 2a13 13 0 0 1 8 0l5-2-1 5c1 1 2 2 2 4 0 3-2 6-7 5v4M9 18c-5 2-6-1-7-2"/></svg><span>GitHub</span></a>
+            <a class="coffee-link" href="https://buymeacoffee.com/jaydemks" target="_blank" rel="noopener noreferrer" data-external><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h13v10c0 4-13 4-13 0V8Zm13 1h3c5 0 5 7-3 7M7 2v3M12 2v3M2 23h17"/></svg><span>Buy me a coffee</span></a>
+          </nav>
+          <small>Optional support via Buy Me a Coffee. No features are locked behind payment. Microsoft is not the fundraiser or sponsor.</small>
+        </section>
         <section class="integration-card store-update-card">
           <div class="integration-heading"><div><strong>App updates</strong><span id="storeUpdateVersion">Checking installation…</span></div><span class="integration-badge">Microsoft Store</span></div>
           <p>Check for new Phrasync versions and install them through Microsoft Store. Your projects remain on this computer.</p>
@@ -568,6 +626,7 @@
       <div class="render-destination">
         <strong>Save video to</strong>
         <span id="renderDirectory">Loading export folder…</span>
+        <input id="renderDirectoryInput" type="text" hidden aria-label="Export folder path" placeholder="Enter an existing absolute folder path" />
         <div class="render-destination-actions">
           <button class="button secondary" id="chooseRenderDirectory" type="button">Choose folder</button>
           <button class="button secondary" id="openRenderDirectory" type="button">Open renders folder</button>
@@ -601,12 +660,19 @@
   <script src="/static/app-ui.js" defer></script>
   <script src="/static/app-lyrics.js" defer></script>
   <script src="/static/app-visuals.js" defer></script>
+  <script src="/static/media-effects.js" defer></script>
+  <script src="/static/visual-clips.js" defer></script>
+  <script src="/static/app-footage.js" defer></script>
+  <script src="/static/app-media-bin.js" defer></script>
+  <script src="/static/app-editor-tools.js" defer></script>
+  <script src="/static/app-visual-tracks.js" defer></script>
   <script src="/static/app-loop.js" defer></script>
   <script src="/static/app-cues.js" defer></script>
   <script src="/static/app-workflows.js" defer></script>
   <script src="/static/app-render.js" defer></script>
   <script src="/static/store-updates.js" defer></script>
   <script src="/static/app-timeline.js" defer></script>
+  <script src="/static/app-export-range.js" defer></script>
   <script src="/static/app.js" defer></script>
 </body>
 </html>

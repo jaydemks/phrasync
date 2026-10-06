@@ -19,6 +19,9 @@ function animationLoop(now) {
     return;
   }
   lastInteractiveFrame = now;
+  if (project.audio?.url && !els.audioPlayer.paused && currentPlaybackTime() >= projectDuration()) {
+    els.audioPlayer.pause();els.backgroundVideo.pause();seekTo(projectDuration());updatePlayButton();
+  }
   if (virtualPlaying && currentPlaybackTime() >= projectDuration()) {
     virtualTime = projectDuration();
     virtualPlaying = false;
@@ -27,7 +30,7 @@ function animationLoop(now) {
   const time = currentPlaybackTime();
   let glScene = null;
   try {
-    glScene = project.background.type === "dynamic"
+    glScene = project.background.type === "dynamic" && !VFMedia.enabled()
       ? drawDynamicVisual(now)
       : prepareWebGLOverlay(time);
   } catch (error) {
@@ -44,6 +47,10 @@ function animationLoop(now) {
     lastPlaybackPaint = time;
   } else renderLyric();
   glScene?.render();
+  try { VFMedia.preview(time, playing); }
+  catch (error) {
+    if (!window.__mediaErrorShown) { window.__mediaErrorShown = true; console.error("Footage preview failed:", error); toast(error.message, "error"); }
+  }
   if (project.background.type === "video") syncBackgroundVideo(time);
   if (playing || timeline?._lastPaintTime !== lyricTime()) timeline?.tick();
   requestAnimationFrame(animationLoop);

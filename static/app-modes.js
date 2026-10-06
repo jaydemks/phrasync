@@ -20,6 +20,7 @@ const MODE_COPY = {
 };
 
 const PRESET_LABELS_2D = {
+  spiral:"Spiral Flight: orbit into focus", constellation:"Word Constellation: scattered typography",
   "kinetic-slam": "Kinetic Slam: high-impact words",
   "neon-flux": "Neon Flux: blur-to-focus glow",
   "focus-word": "Focus Word: one word at a time",
@@ -30,6 +31,7 @@ const PRESET_LABELS_2D = {
 };
 
 const PRESET_LABELS_3D = {
+  spiral:"Spiral Flight: orbit through depth", constellation:"Word Constellation: spatial word field",
   "kinetic-slam": "Monolith: solid impact",
   "neon-flux": "Deep Neon: drifting light",
   "focus-word": "Hero Word: single giant form",

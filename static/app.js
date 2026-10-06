@@ -28,6 +28,8 @@ function bindControls() {
 
   $$("button", els.backgroundType).forEach(button => button.addEventListener("click", () => {
     project.background.type = button.dataset.value;
+    project.background.footageEnabled = false;
+    refreshFootageControls();
     const asset = activeBackgroundAsset(project.background.type);
     project.background.assetId = asset?.id || null;
     project.background.url = asset?.url || null;
@@ -160,6 +162,14 @@ function bindControls() {
   els.resolutionSelect.addEventListener("change", setCanvasDimensions);
   els.fpsSelect.addEventListener("change", setCanvasDimensions);
   els.qualitySelect.addEventListener("change", () => { project.export.crf = Number(els.qualitySelect.value); scheduleSave(); });
+  const updateBitrate = () => {
+    const custom = els.rateControlSelect.value === "bitrate";
+    els.bitrateField.hidden = !custom; els.qualitySelect.disabled = custom;
+    project.export.bitrateMbps = custom ? Number(els.bitrateInput.value) : null;
+    scheduleSave();
+  };
+  els.rateControlSelect.addEventListener("change", updateBitrate);
+  els.bitrateInput.addEventListener("input", updateBitrate);
   els.safeAreaToggle.addEventListener("change", applyStageStyle);
 
   els.playButton.addEventListener("click", togglePlay);
@@ -188,9 +198,8 @@ function bindControls() {
   els.replaceBulkButton.addEventListener("click", () => createCuesFromLines(els.bulkLyrics.value.split(/\r?\n/), true));
   els.addCueButton.addEventListener("click", () => {
     const start = Math.max(0, lyricTime());
-    const cue = { id: `cue-${Date.now()}`, start, end: start + 2.5, text: "NEW LYRIC", words: [], manual: true };
-    project.cues.push(cue); selectedCueId = cue.id; renderCueList(); updateDurationUI(); scheduleSave();
-    requestAnimationFrame(() => els.cueList.scrollTo({ top: els.cueList.scrollHeight, behavior: "smooth" }));
+    const cue = { id: `cue-${crypto.randomUUID()}`, start, end: start + 2.5, text: "NEW LYRIC", words: [], manual: true };
+    project.cues.push(cue); selectedCueId = cue.id; renderCueList({ preservePage: true }); updateDurationUI(); scheduleSave();
   });
   els.sortCuesButton.addEventListener("click", () => { normalizeCues(); renderCueList(); scheduleSave(); });
   els.nudgeBackButton.addEventListener("click", () => nudgeSelected(-.1));
@@ -206,41 +215,51 @@ function bindControls() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cues: project.cues, style: project.style, canvas: project.canvas })
       });
-      downloadBlob(body, `${safeFilename(project.title)}.${extension}`, "text/plain");
-      toast(`Exported ${format.toUpperCase()}.`, "success");
+      const path = await saveTextFile(body, `${safeFilename(project.title)}.${extension}`, extension);
+      if (path) toast(`Exported ${format.toUpperCase()}: ${path}`, "success");
     } catch (error) {
       toast(`Export failed: ${error.message}`, "error");
     }
   });
 
-  els.loadProjectButton.addEventListener("click", () => els.projectInput.click());
+  const loadProject = async content => {
+      const loaded = migrateProject(JSON.parse(content));
+      els.audioPlayer.pause(); project = loaded;
+      analysis = null; analysisPending = false; selectedWordIndex = 0; tapArmed = false; tapQueue = [];
+      selectedCueId = project.cues[0]?.id || null;
+      applyProjectToControls(); updateSyncSummary(); timeline?.fitAll(); seekTo(0); scheduleSave();
+      toast("Project loaded. Media links refer to this local Phrasync workspace.", "success");
+      if (project.audioAssetId) ensureAnalysis();
+  };
+  els.loadProjectButton.addEventListener("click", async () => {
+    if (!IS_DESKTOP_HOST) return els.projectInput.click();
+    try {
+      const bridge = window.pywebview?.api;
+      if (!bridge?.load_project_file) throw new Error("Desktop file dialogs are not ready. Please try again.");
+      const file = await bridge.load_project_file();
+      if (file) await loadProject(file.content);
+    } catch (error) { toast(`Could not load project: ${error.message}`, "error"); }
+  });
   els.projectInput.addEventListener("change", async () => {
     const file = els.projectInput.files[0];
     if (!file) return;
     try {
-      els.audioPlayer.pause();
-      project = migrateProject(JSON.parse(await file.text()));
-      analysis = null;
-      analysisPending = false;
-      selectedWordIndex = 0;
-      tapArmed = false;
-      tapQueue = [];
-      selectedCueId = project.cues[0]?.id || null;
-      applyProjectToControls();
-      updateSyncSummary();
-      timeline?.fitAll();
-      seekTo(0);
-      scheduleSave();
-      toast("Project loaded. Media links refer to this local Phrasync workspace.", "success");
-      if (project.audioAssetId) ensureAnalysis();
+      await loadProject(await file.text());
     } catch (error) { toast(`Invalid project: ${error.message}`, "error"); }
     finally { els.projectInput.value = ""; }
   });
-  els.saveProjectButton.addEventListener("click", () => downloadBlob(JSON.stringify(project, null, 2), `${safeFilename(project.title)}.phrasync.json`, "application/json"));
+  els.saveProjectButton.addEventListener("click", async () => {
+    try {
+      const path = await saveTextFile(JSON.stringify(project, null, 2), `${safeFilename(project.title)}.phrasync.json`, "json", "application/json");
+      if (path) toast(`Project saved: ${path}`, "success");
+    } catch (error) { toast(`Could not save project: ${error.message}`, "error"); }
+  });
   els.resetProjectButton.addEventListener("click", () => {
-    if (!confirm("Reset the current project and local autosave?")) return;
+    if (!confirm(t("Create a new project? Save your current project first to keep it."))) return;
+    els.audioPlayer.pause(); analysis = null; analysisPending = false; selectedFootageId = null;
+    selectedWordIndex = 0; tapArmed = false; tapQueue = [];
     project = clone(DEFAULT_PROJECT); selectedCueId = project.cues[0].id; currentCueId = null;
-    localStorage.removeItem(STORAGE_KEY); applyProjectToControls(); seekTo(0); toast("Project reset.");
+    localStorage.removeItem(STORAGE_KEY); applyProjectToControls(); updateSyncSummary(); timeline?.fitAll(); seekTo(0); scheduleSave(); toast("Project reset.");
   });
 
   els.renderClose.addEventListener("click", () => els.renderDialog.close());
@@ -253,6 +272,9 @@ function bindControls() {
   window.addEventListener("keydown", event => {
     if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); openRenderDialog(); }
     if (event.target.matches("input,textarea,select")) return;
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+      event.preventDefault(); duplicateCue(); return;
+    }
     if (event.code === "Space" && !event.target.matches("button")) { event.preventDefault(); togglePlay(); }
     // Tap sync only listens once it is armed, so T stays free otherwise.
     if (tapArmed && (event.key === "t" || event.key === "T")) { event.preventDefault(); handleTap(); }
@@ -302,6 +324,7 @@ async function openSettings() {
   els.hfTokenReveal.textContent = "Show";
   try {
     const result = await api("/api/settings");
+    document.getElementById("aboutVersion").textContent = `${t("Version")} ${result.version || "0.4.5"}`;
     showHfTokenStatus(result.huggingFace);
     if (!els.settingsDialog.open) els.settingsDialog.showModal();
   } catch (error) {
@@ -347,6 +370,8 @@ function init() {
   bindControls();
   initOceanControls();
   initTextOrientation();
+  initFootage();
+  initEditorTools();
   applyProjectToControls();
   els.audioPlayer.volume = Number(els.volumeSlider.value);
   updateRangeUI(els.volumeSlider);

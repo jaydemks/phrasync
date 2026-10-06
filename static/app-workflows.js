@@ -13,6 +13,8 @@ async function handleAudioFile(file) {
     project.sourceKind = kind;
     if (video) {
       project.background.type = "video";
+      project.background.footageEnabled = false;
+      refreshFootageControls();
       project.background.videoAsset = asset;
       project.background.assetId = asset.id;
       project.background.url = asset.url;

@@ -29,6 +29,7 @@ from .transcription_guard import (
     repair_boundary_words,
     segment_diagnostic,
     whisper_options,
+    pathological_repetition,
 )
 
 MODEL_DIR = WORKSPACE / "models"
@@ -359,12 +360,14 @@ def _decode_pass(
     language: str | None = None,
     cancel_check: Callable[[], bool] | None = None,
     on_time: Callable[[float], None] | None = None,
+    recover_loops: bool = True,
 ) -> dict[str, Any]:
     """Run one Whisper decode and return its segments in track time."""
     segments, info = model.transcribe(source, **options)
     collected: list[dict[str, Any]] = []
     diagnostics: list[dict[str, Any]] = []
     repaired_words = 0
+    loops: list[tuple[int, int, float, float]] = []
     try:
         for segment in segments:
             _guard(cancel_check)
@@ -385,7 +388,10 @@ def _decode_pass(
             segment_text = str(segment.text).strip()
             words, repaired = repair_boundary_words(segment_text, words, start, end)
             repaired_words += repaired
-            diagnostics.append(segment_diagnostic(segment))
+            diagnostic = segment_diagnostic(segment)
+            diagnostic["start"] = round(start, 3)
+            diagnostic["end"] = round(end, 3)
+            diagnostics.append(diagnostic)
             collected.append(
                 {
                     "start": start,
@@ -395,12 +401,37 @@ def _decode_pass(
                     "language": language or getattr(info, "language", None),
                 }
             )
+            if recover_loops and pathological_repetition(segment):
+                loops.append((len(collected)-1,len(diagnostics)-1,float(segment.start),float(segment.end)))
             if on_time:
                 on_time(end)
     finally:
         close = getattr(segments, "close", None)
         if callable(close):
             close()
+    if loops:
+        audio = load_audio(Path(source)) if isinstance(source, (str, Path)) else source
+        for index, diagnostic_index, begin, finish in reversed(loops):
+            _guard(cancel_check)
+            left=max(0,begin-.35); right=min(len(audio)/16000,finish+.35)
+            retry_options=dict(options)
+            retry_options.update(condition_on_previous_text=False,vad_filter=False)
+            retry_options.pop("clip_timestamps",None); retry_options.pop("vad_parameters",None)
+            retry = _decode_pass(model,audio[round(left*16000):round(right*16000)],retry_options,
+                offset=offset+left,language=language,cancel_check=cancel_check,recover_loops=False)
+            recovered=[]
+            for candidate, check in zip(retry["segments"],retry["diagnostics"]):
+                if check["unstable"] or candidate["end"] <= offset+begin or candidate["start"] >= offset+finish:
+                    continue
+                words=[w for w in candidate["words"] if offset+begin <= w["start"] < offset+finish]
+                if words:
+                    words=[{**w,"end":min(offset+finish,w["end"])} for w in words]
+                    recovered.append({**candidate,"start":words[0]["start"],"end":min(offset+finish,words[-1]["end"]),
+                                      "text":_join_words(words),"words":words})
+            collected[index:index+1]=recovered
+            diagnostics[diagnostic_index]["loopRecovery"]="recovered" if recovered else "unresolved"
+            if recovered: diagnostics[diagnostic_index]["unstable"]=False
+            diagnostics[diagnostic_index]["discardedRunawayTokens"]=True
     return {
         "segments": collected,
         "diagnostics": diagnostics,

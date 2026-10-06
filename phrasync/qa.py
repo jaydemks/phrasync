@@ -84,6 +84,12 @@ def _contrast(a: tuple[int, int, int], b: tuple[int, int, int]) -> float:
 
 def preflight_project(project: dict[str, Any]) -> CriticReport:
     report = CriticReport()
+    from .footage import prepare_footage
+    try:
+        prepare_footage(project)
+        report.checks.append("Footage sources, trim limits and effects")
+    except (ValueError, TypeError, KeyError) as exc:
+        report.add("error", "invalid_footage", str(exc))
     canvas = project.get("canvas") or {}
     width = int(canvas.get("width", 1920))
     height = int(canvas.get("height", 1080))
@@ -196,7 +202,7 @@ def preflight_project(project: dict[str, Any]) -> CriticReport:
     background = project.get("background") or {}
     background_type = background.get("type", "dynamic")
     background_id = background.get("assetId")
-    if background_type in {"image", "video"}:
+    if not background.get("footageEnabled") and background_type in {"image", "video"}:
         expected = background_type
         asset = get_asset(background_id, expected) if background_id else None
         if not asset:
@@ -268,6 +274,16 @@ def preflight_project(project: dict[str, Any]) -> CriticReport:
             last_end = max((cue["end"] for cue in cues), default=0.0)
             if last_end > detected + 0.25:
                 report.add("warning", "lyrics_after_audio", "Some lyric cues continue after the audio ends.")
+    duration = max(duration, max((float(clip["end"]) for clip in (project.get("background") or {}).get("clips", [])), default=0))
+    if project.get("timelineDuration") is not None:
+        duration = float(project["timelineDuration"])
+    if project.get("exportRange") is not None:
+        selected = project["exportRange"]
+        start, end = float(selected.get("in", 0)), float(selected.get("out", duration))
+        if not math.isfinite(start) or not math.isfinite(end) or not 0 <= start < end <= duration:
+            report.add("error", "invalid_export_range", "Export IN/OUT must be within the timeline and OUT must follow IN.")
+        else:
+            duration = end - start
     report.metrics["duration"] = round(duration, 3)
 
     frame_count = int(math.ceil(duration * fps))

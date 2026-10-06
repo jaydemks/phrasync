@@ -4,6 +4,17 @@ const LANGUAGE_KEY = "phrasync.language";
 const ONBOARDING_KEY = "phrasync.onboarding.v2";
 
 const ITALIAN = {
+  "Video rate control": "Controllo bitrate video",
+  "Automatic quality (CRF)": "Qualità automatica (CRF)",
+  "Custom bitrate (Mbps)": "Bitrate personalizzato (Mbps)",
+  "Video bitrate (Mbps)": "Bitrate video (Mbps)",
+  "For example: 50 or 150 Mbps. Higher rates create larger files.": "Per esempio: 50 o 150 Mbps. Bitrate maggiori generano file più grandi.",
+  "Choose where to save your exports before starting a render.": "Scegli dove salvare gli export prima di avviare il rendering.",
+  "Show exported MP4": "Mostra MP4 esportato",
+  "Export folder path": "Percorso cartella export",
+  "Enter an existing absolute folder path": "Inserisci il percorso completo di una cartella esistente",
+  "middle mouse = pan · drag = move · edges = duration · Shift = ripple · Alt = no snap": "rotella premuta = scorri · trascina = sposta · bordi = durata · Shift = sposta successivi · Alt = senza aggancio",
+  "Scroll timeline": "Scorri la timeline",
   "App updates": "Aggiornamenti dell'app",
   "Checking installation…": "Verifica dell'installazione…",
   "Check for new Phrasync versions and install them through Microsoft Store. Your projects remain on this computer.": "Controlla le nuove versioni di Phrasync e installale tramite Microsoft Store. I progetti rimangono su questo computer.",
@@ -386,12 +397,18 @@ function initI18n() {
   currentLanguage = localStorage.getItem(LANGUAGE_KEY) === "it" ? "it" : "en";
   document.querySelector("#languageToggle")?.addEventListener("click", toggleInterfaceLanguage);
   document.querySelector("#onboardingLanguageToggle")?.addEventListener("click", toggleInterfaceLanguage);
+  document.querySelector("#onboardingHide")?.addEventListener("change", event => {
+    if (event.target.checked) localStorage.setItem(ONBOARDING_KEY,"hidden");
+    else localStorage.removeItem(ONBOARDING_KEY);
+  });
   document.querySelector("#onboardingContinue")?.addEventListener("click", () => {
-    localStorage.setItem(ONBOARDING_KEY, "seen");
+    if (document.querySelector("#onboardingHide")?.checked) localStorage.setItem(ONBOARDING_KEY, "hidden");
+    else localStorage.removeItem(ONBOARDING_KEY);
     document.querySelector("#onboardingDialog")?.close();
   });
   setInterfaceLanguage(currentLanguage);
-  if (!localStorage.getItem(ONBOARDING_KEY)) document.querySelector("#onboardingDialog")?.showModal();
+  document.querySelector("#onboardingHide").checked = localStorage.getItem(ONBOARDING_KEY) === "hidden";
+  if (localStorage.getItem(ONBOARDING_KEY) !== "hidden") document.querySelector("#onboardingDialog")?.showModal();
 }
 
 window.t = translateExact;

@@ -24,6 +24,10 @@ const DEFAULT_PROJECT = {
   sourceKind: "audio",
   background: {
     type: "dynamic",
+    footageEnabled: false,
+    clips: [],
+    mediaLibrary: [],
+    effects: { bw: 0, pendulum: 0, shake: 0, flash: 0, gradient: 0, particles: 0, spectrum: 0, bpm: 0, color1: "#6b21a8", color2: "#ec4899" },
     visual: "aurora",
     sceneKit: "japan",
     sceneDirection: "forward",
@@ -88,7 +92,7 @@ const DEFAULT_PROJECT = {
     wordLead: 0.06,
     beatReact: true
   },
-  export: { crf: 18, preset: "medium" },
+  export: { crf: 18, preset: "medium", bitrateMbps: null },
   cues: [
     { id: "cue-1", start: 0, end: 2.6, text: "MAKE EVERY\nFRAME MOVE", words: [] },
     { id: "cue-2", start: 2.6, end: 5.2, text: "TYPE TO\nTHE BEAT", words: [] },
@@ -267,6 +271,10 @@ const els = {
   resolutionSelect: $("#resolutionSelect"),
   fpsSelect: $("#fpsSelect"),
   qualitySelect: $("#qualitySelect"),
+  rateControlSelect: $("#rateControlSelect"),
+  bitrateInput: $("#bitrateInput"),
+  bitrateField: $("#bitrateField"),
+  renderDirectoryInput: $("#renderDirectoryInput"),
   safeAreaToggle: $("#safeAreaToggle"),
   stageShell: $("#stageShell"),
   stage: $("#stage"),

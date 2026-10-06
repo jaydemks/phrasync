@@ -45,8 +45,10 @@ def test_render_job_status_and_download(tmp_path, monkeypatch):
     monkeypatch.setattr(jobs_module, "JOBS_DIR", tmp_path)
     monkeypatch.setattr(jobs_module, "RENDERS_DIR", tmp_path)
     selected_dir = tmp_path / "selected exports"
+    selected_dir.mkdir()
     monkeypatch.setattr(app_module.desktop_export, "_window", object())
     monkeypatch.setattr(app_module.desktop_export, "_directory", selected_dir)
+    monkeypatch.setattr(app_module.desktop_export, "_directory_selected", True)
     client = TestClient(app)
     project = {
         "title": "API smoke",
@@ -69,6 +71,7 @@ def test_render_job_status_and_download(tmp_path, monkeypatch):
             time.sleep(0.05)
         assert status["state"] == "complete", json.dumps(status, indent=2)
         assert Path(status["result"]["path"]).parent == selected_dir
+        assert list(selected_dir.glob("*.mp4")) == [selected_dir / "API_smoke.mp4"]
         download = client.get(f"/api/render/{job_id}/download")
         assert download.status_code == 200
         assert download.content.startswith(b"\x00\x00")

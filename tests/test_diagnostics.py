@@ -10,10 +10,10 @@ def test_editor_document_and_assets_are_versioned_for_in_place_updates():
     response = TestClient(app_module.app).get("/?desktop=1&app_version=0.4.4")
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store, max-age=0"
-    assert '/static/app.js?v=0.4.4' in response.text
-    assert '/static/app-render.js?v=0.4.4' in response.text
-    assert '/static/diagnostics.js?v=0.4.4' in response.text
-    assert '/static/styles.css?v=0.4.4' in response.text
+    assert '/static/app.js?v=0.4.5' in response.text
+    assert '/static/app-render.js?v=0.4.5' in response.text
+    assert '/static/diagnostics.js?v=0.4.5' in response.text
+    assert '/static/styles.css?v=0.4.5' in response.text
     assert response.text.index("diagnostics.js?v=") < response.text.index("app.js?v=")
 
 

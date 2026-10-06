@@ -1,3 +1,36 @@
+# Phrasync v0.4.5
+
+GitHub source release; the matching Microsoft Store package is being prepared for submission. Store availability follows Microsoft's certification and rollout.
+
+- Mark an MP4 export interval on the timeline with I/O, editable seconds or draggable IN/OUT markers. Export only that interval with original audio, footage, 2D/3D lyrics and effect timing; clear it to render the full timeline.
+- Timeline duration follows loaded media and footage automatically, or can be set manually and saved with the project.
+
+- Adding cues keeps the lyric list at its current scroll position.
+- Pan the timeline with the middle mouse button or its horizontal scrollbar.
+- Duplicate a cue with its copy button or Ctrl+D, preserving and shifting word timings.
+- Save and load projects through native Windows file dialogs.
+- Choose where to save SRT, VTT, ASS and LRC exports; cancelling no longer reports success.
+- WebGL 4K exports can use a bounded-memory FFmpeg compatibility encoder when browser H.264 encoding is unavailable.
+- Custom video bitrate in Mbps, including 150 Mbps, is honoured across the export engines without the previous 28 Mbps ceiling. Automatic CRF quality remains available.
+- An export folder must be explicitly selected before rendering. Each job saves one project-named MP4 there; the result button shows that existing file instead of making a second copy. Repeated exports use readable numbered names without overwriting previous videos.
+- Added a background-footage timeline: combine images and MP4/WebM video, move, trim, split and duplicate clips, change source-in and speed, and animate pan/zoom without altering the original media.
+- Import footage into a reusable media bin and drag it onto the timeline. Clip actions appear beside the selected track; numeric editing retains precise inputs with quick sliders. Large imports show individual progress and checking status without automatically changing the edit.
+- Added adjustable black-and-white, pendulum movement, beat shake/flash, a two-color gradient, particles and an audio-frequency spectrum overlay. Effects are shared between preview and export, with streamed audio analysis for the offline spectrum.
+- Existing single backgrounds and 2D/3D lyrics remain available. Footage video sound is muted; the song/source audio remains the master track. Bright flash effects are disabled by default and include a photosensitivity warning.
+
+- Integrated 2D/3D visuals can be added to the media bin as editable clips, then combined with images/video on up to four background tracks. Per-clip opacity, fades, wipe and slide transitions use the same compositor in preview and export.
+- Background tracks can be removed, with confirmation for occupied tracks. Remaining clips are reindexed correctly; original media stays in the bin, including when the last track is removed.
+- Extremely dense repeated-token transcription loops are retried in isolation, without conditioning on earlier text. Unreliable loops cannot stretch the following lyrics out of time; normal repeated vocals and requested language settings retain their existing decoding path.
+- Added Spiral Flight and Word Constellation typography in both flat and spatial modes, with matching offline timing math. Existing timing and styles are unchanged.
+- Added beat-drop zoom and light pulses, with a beat-grid or detected-transient trigger alongside the existing shake, pendulum, flash, gradient, particles and spectrum controls.
+- The welcome popup includes optional coffee support and an explicit Don't show this again checkbox.
+
+- Timeline zoom buttons center on the playhead. Background clips have a right-click menu with split, duplicate, move, speed, zoom and reset controls.
+- New/load/save project commands are under File at the top left, with keyboard shortcuts. Projects retain footage library, clip edits and effects.
+- Settings includes the running software version, author contacts and optional external Buy Me a Coffee support.
+
+---
+
 # Phrasync v0.4.4 — GitHub source release
 
 - Manually added lyric cues remain visible during playback and MP4 export even when they overlap transcribed cues. Existing projects with untimed manual cues are also handled.

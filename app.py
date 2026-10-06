@@ -245,7 +245,7 @@ def shutdown(request: Request) -> dict[str, bool]:
 @app.get("/api/settings")
 def settings_status(request: Request) -> dict[str, Any]:
     _require_local_request(request)
-    return {"huggingFace": hf_token_status()}
+    return {"huggingFace": hf_token_status(), "app": APP_NAME, "version": APP_VERSION}
 
 
 @app.put("/api/settings/hugging-face")
@@ -487,7 +487,17 @@ def create_render(payload: dict[str, Any] = Body(...)) -> JSONResponse:
     if not isinstance(project, dict):
         raise HTTPException(status_code=400, detail="Missing project payload")
     title = str(payload.get("title") or project.get("title") or "phrasync_export")
-    output_dir = Path(desktop_export.get_render_directory()) if desktop_export._window else None
+    destination = desktop_export.get_selected_render_directory() if desktop_export._window else payload.get("outputDirectory")
+    if not destination:
+        raise HTTPException(status_code=400, detail="Choose where to save your exports before starting a render.")
+    output_dir = Path(str(destination)).expanduser()
+    if not output_dir.is_absolute() or not output_dir.is_dir():
+        raise HTTPException(status_code=400, detail="Choose an existing absolute export folder.")
+    from phrasync.encoding import bitrate_bps
+    try:
+        bitrate_bps(project)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     job = manager.create_render(project, title, output_dir)
     return JSONResponse(job.public(), status_code=202)
 
@@ -498,6 +508,16 @@ def render_status(job_id: str) -> dict[str, Any]:
     if not job:
         raise HTTPException(status_code=404, detail="Render job not found")
     return job.public()
+
+
+@app.post("/api/render/{job_id}/show")
+def show_render_file(job_id: str) -> dict[str, str]:
+    try:
+        return {"path": desktop_export.show_render_file(job_id)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/render/{job_id}/cancel")

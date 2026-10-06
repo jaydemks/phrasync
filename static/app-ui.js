@@ -25,7 +25,7 @@ async function api(path, options = {}) {
   return data;
 }
 
-async function uploadAsset(kind, file) {
+async function uploadAsset(kind, file, onProgress = null) {
   // Send the File directly: multipart would spool and copy a long video twice.
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
@@ -34,9 +34,10 @@ async function uploadAsset(kind, file) {
     request.upload.onprogress = event => {
       if (!event.lengthComputable) return;
       const percent = Math.round(event.loaded / event.total * 100);
+      onProgress?.(percent, "upload");
       setAssetStatus(`${window.t("Importing")}: ${file.name} · ${percent}% · ${formatByteCount(event.loaded)} / ${formatByteCount(event.total)}`);
     };
-    request.upload.onload = () => setAssetStatus(window.t("Checking media…"));
+    request.upload.onload = () => { setAssetStatus(window.t("Checking media…")); onProgress?.(100, "checking"); };
     request.onerror = () => reject(new Error(window.t("Import interrupted. Check that Phrasync is still running and try again.")));
     request.onabort = () => reject(new Error(window.t("Import cancelled.")));
     request.onload = () => {
@@ -84,9 +85,13 @@ function normalizeCues() {
 }
 
 function projectDuration() {
+  if (Number(project.timelineDuration) > 0) return Number(project.timelineDuration);
   const cueEnd = Math.max(0, ...project.cues.map(cue => Number(cue.end) || 0));
-  if (Number(project.audio?.duration) > 0) return Number(project.audio.duration);
-  return Math.max(0.5, Number(project.duration) || 0, cueEnd);
+  const footageEnd = project.background.footageEnabled ? Math.max(0, ...(project.background.clips || []).map(clip => clip.end)) : 0;
+  const audioEnd=Number(project.audio?.duration) || 0;
+  const videoEnd=project.background.type === "video" ? Number(project.background.videoAsset?.duration) || 0 : 0;
+  const mediaEnd = Math.max(audioEnd || cueEnd, videoEnd, footageEnd);
+  return Math.max(0.5, mediaEnd || 8);
 }
 
 function formatTime(value) {
@@ -225,6 +230,10 @@ function applyProjectToControls() {
   }
   els.fpsSelect.value = String(project.canvas.fps);
   els.qualitySelect.value = String(project.export.crf);
+  els.rateControlSelect.value = project.export.bitrateMbps != null ? "bitrate" : "auto";
+  els.bitrateInput.value = String(project.export.bitrateMbps ?? 50);
+  els.bitrateField.hidden = els.rateControlSelect.value !== "bitrate";
+  els.qualitySelect.disabled = !els.bitrateField.hidden;
   $$("input[type=range]").forEach(updateRangeUI);
   applyBackgroundTypeUI();
   applyModeUI();
@@ -239,6 +248,7 @@ function applyProjectToControls() {
   updatePresetHint();
   updateSyncSummary();
   updateWordLabel();
+  refreshFootageControls();
 }
 
 function updatePresetHint() {
@@ -260,6 +270,26 @@ function applyAudioPreview() {
     els.audioPlayer.load();
     els.noAudioHint.hidden = false;
   }
+}
+
+async function saveTextFile(content, filename, extension, type = "text/plain") {
+  if (IS_DESKTOP_HOST) {
+    const bridge = window.pywebview?.api;
+    if (!bridge?.save_text_file) throw new Error("Desktop file dialogs are not ready. Please try again.");
+    return await bridge.save_text_file(content, filename, extension);
+  }
+  if (window.showSaveFilePicker) {
+    let handle;
+    try {
+      handle = await window.showSaveFilePicker({ suggestedName: filename,
+        types: [{ description: extension.toUpperCase(), accept: { [type]: [`.${extension}`] } }] });
+    } catch (error) { if (error.name === "AbortError") return null; throw error; }
+    const stream = await handle.createWritable();
+    await stream.write(content); await stream.close();
+    return handle.name;
+  }
+  downloadBlob(content, filename, type);
+  return "browser download";
 }
 let lastMediaErrorAt = 0;
 function reportMediaPreviewError(media, label) {

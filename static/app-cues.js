@@ -58,11 +58,12 @@ function cuePager(pageCount) {
 }
 
 function renderCueList(options = {}) {
+  const scrollTop = els.cueList.scrollTop || 0;
   normalizeCues();
   const pageCount = Math.max(1, Math.ceil(project.cues.length / CUE_PAGE_SIZE));
   const selectedIndex = project.cues.findIndex(cue => cue.id === selectedCueId);
   if (Number.isInteger(options.page)) cueListPage = options.page;
-  else if (selectedCueId !== cueListSelection && selectedIndex >= 0) cueListPage = Math.floor(selectedIndex / CUE_PAGE_SIZE);
+  else if (!options.preservePage && selectedCueId !== cueListSelection && selectedIndex >= 0) cueListPage = Math.floor(selectedIndex / CUE_PAGE_SIZE);
   cueListSelection = selectedCueId;
   cueListPage = Math.max(0, Math.min(pageCount - 1, cueListPage));
   els.cueList.textContent = "";
@@ -96,6 +97,13 @@ function renderCueList(options = {}) {
     const remove = document.createElement("button");
     remove.type = "button"; remove.className = "cue-delete"; remove.textContent = "×"; remove.title = "Delete cue";
     card.append(number, content, remove);
+    const duplicate = document.createElement("button");
+    duplicate.type = "button"; duplicate.className = "cue-duplicate";
+    duplicate.textContent = "⧉";
+    duplicate.title = cueListText("Duplicate cue", "Duplica frase");
+    duplicate.setAttribute("aria-label", duplicate.title);
+    duplicate.addEventListener("click", event => { event.stopPropagation(); duplicateCue(cue.id); });
+    card.append(duplicate);
 
     const select = () => {
       selectedCueId = cue.id;
@@ -122,7 +130,8 @@ function renderCueList(options = {}) {
       if (cue.id === currentCueId) renderLyric(true);
       scheduleSave();
     });
-    remove.addEventListener("click", () => {
+    remove.addEventListener("click", event => {
+      event?.stopPropagation();
       project.cues = project.cues.filter(item => item.id !== cue.id);
       if (selectedCueId === cue.id) selectedCueId = project.cues[0]?.id || null;
       renderCueList(); updateDurationUI(); scheduleSave();
@@ -130,11 +139,24 @@ function renderCueList(options = {}) {
     fragment.append(card);
   });
   els.cueList.append(fragment);
+  els.cueList.scrollTop = scrollTop;
   els.cueCount.textContent = `${project.cues.length} cue${project.cues.length === 1 ? "" : "s"}`;
 }
-document.addEventListener("phrasync-language-change", () => {
-  if (project.cues.length > CUE_PAGE_SIZE) renderCueList({ page: cueListPage });
-});
+
+function duplicateCue(id = selectedCueId) {
+  const source = project.cues.find(cue => cue.id === id);
+  if (!source) return;
+  const shift = source.end - source.start;
+  const copy = { ...source, id: `cue-${crypto.randomUUID()}`, start: source.end,
+    end: source.end + shift, manual: true,
+    words: (source.words || []).map(word => ({ ...word, start: word.start + shift, end: word.end + shift })) };
+  project.cues.push(copy); selectedCueId = copy.id; selectedWordIndex = 0; tapQueue = [];
+  renderCueList(); updateDurationUI(); updateWordLabel(); timeline?.draw(); scheduleSave();
+  const card = [...els.cueList.querySelectorAll(".cue-card")].find(item => item.dataset.id === copy.id);
+  const text = card?.querySelector("textarea");
+  text?.focus({ preventScroll: true }); text?.select();
+}
+document.addEventListener("phrasync-language-change", () => renderCueList({ page: cueListPage }));
 async function createCuesFromLines(lines, replace) {
   lines = lines.map(line => line.trim()).filter(Boolean);
   if (!lines.length) return;

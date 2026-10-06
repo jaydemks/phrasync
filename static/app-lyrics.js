@@ -345,6 +345,7 @@ function updateDurationUI() {
   els.seekBar.max = duration;
   els.durationTime.textContent = formatTime(duration);
   updateRangeUI(els.seekBar);
+  if (typeof refreshExportRange === "function") refreshExportRange();
 }
 
 function updatePlaybackUI(time) {

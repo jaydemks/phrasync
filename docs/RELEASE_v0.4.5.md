@@ -16,6 +16,6 @@ Local Windows tests include real IN/OUT MP4 exports with audio, and an ocean 3D 
 
 Install the Windows app for free from the [Microsoft Store](https://apps.microsoft.com/detail/9NF9JBG2PKHX). This GitHub release contains source code, not a separate installer: see the [README](https://github.com/jaydemks/phrasync/blob/main/README.md) for desktop and browser launch instructions.
 
-GitHub and Store use the same version line. The matching 0.4.5 Store package is being prepared for submission; the Store continues to offer the previous build until certification and rollout are complete.
+GitHub and Store use the same version line. The matching 0.4.5.0 Store package was submitted for certification on October 6, 2026; the Store continues to offer the previous build until certification and rollout are complete.
 
 Full history: [RELEASE_NOTES.md](https://github.com/jaydemks/phrasync/blob/main/RELEASE_NOTES.md).

@@ -1,6 +1,6 @@
 # Phrasync v0.4.5
 
-GitHub source release; the matching Microsoft Store package is being prepared for submission. Store availability follows Microsoft's certification and rollout.
+GitHub source release; the matching 0.4.5.0 Microsoft Store package was submitted for certification on October 6, 2026. Store availability follows Microsoft's certification and rollout; the previous build remains available until then.
 
 - Mark an MP4 export interval on the timeline with I/O, editable seconds or draggable IN/OUT markers. Export only that interval with original audio, footage, 2D/3D lyrics and effect timing; clear it to render the full timeline.
 - Timeline duration follows loaded media and footage automatically, or can be set manually and saved with the project.

@@ -69,6 +69,7 @@ function glLayerNeeded() {
   const bg = project.background;
   return Boolean(window.VFSceneGL)
     && (lyric3DEnabled() || Boolean(bg.sceneWave)
+      || atmosphereActive(bg)
       || (bg.type === "dynamic" && bg.visual === "scene3d" && !VFMedia.enabled()));
 }
 
@@ -98,7 +99,7 @@ function drawSceneGL(t, bg, pulse, intensity) {
   if (world) scene.build(bg.sceneKit || "japan");
   else scene.buildTextOnly();
   scene.setSize(width, height);
-  const environment = resolvedEnvironmentAt(t);
+  const environment = atmosphereStateAt(t,bg);
   if (world) {
     els.environmentResolved.textContent = [
       environment.season, environment.daytime, environment.weather
@@ -249,7 +250,7 @@ function drawDynamicVisual(now) {
     ctx.fillStyle = glow; ctx.fillRect(0,horizon-height*.08,width,height*.18);
   }
 
-  if ((lyric3DEnabled() || bg.sceneWave) && bg.visual !== "scene3d") {
+  if (glLayerNeeded() && bg.visual !== "scene3d") {
     return drawSceneGL(lyricTime(), bg, pulse, intensity);
   }
   return null;
@@ -337,32 +338,11 @@ window.VFExport = {
     const ctx = canvas.getContext("2d", { alpha: false });
     ctx.fillStyle = bg.backgroundColor || "#080812";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const cover = source => {
-      if (!source?.naturalWidth && !source?.videoWidth) return;
-      const sw = source.naturalWidth || source.videoWidth;
-      const sh = source.naturalHeight || source.videoHeight;
-      const scale = Math.max(canvas.width / sw, canvas.height / sh);
-      const dw = sw * scale, dh = sh * scale;
-      ctx.drawImage(source, (canvas.width - dw) / 2, (canvas.height - dh) / 2, dw, dh);
-    };
-    if (VFMedia.usesCanvas()) await VFMedia.exportBase(ctx, virtualTime, amplitude);
+    // The shared media loader waits for actual pixels and seeks exactly. The
+    // hidden preview elements need not have a source in a headless export.
+    if (VFMedia.usesCanvas() || bg.type === "image" || bg.type === "video") await VFMedia.exportBase(ctx, virtualTime, amplitude);
     else if (bg.type === "dynamic") ctx.drawImage(els.visualCanvas, 0, 0, canvas.width, canvas.height);
-    else if (bg.type === "image") cover(els.backgroundImage);
-    else if (bg.type === "video") {
-      const video = els.backgroundVideo;
-      if (Number.isFinite(video.duration) && video.duration > 0) {
-        const target = virtualTime % video.duration;
-        if (Math.abs(video.currentTime - target) > 0.002) {
-          await new Promise(resolve => {
-            const done = () => resolve();
-            video.addEventListener("seeked", done, { once: true });
-            video.currentTime = target;
-            setTimeout(done, 250);
-          });
-        }
-      }
-      cover(video);
-    }
+    if (VFMedia.usesCanvas() && VFMedia.gradientUnderText()) VFMedia.drawGradient(ctx,virtualTime,amplitude);
     const shade = Math.max(0, Math.min(0.92, Number(bg.shade) || 0));
     if (shade) {
       ctx.fillStyle = `rgba(0,0,0,${shade})`;

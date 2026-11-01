@@ -8,9 +8,9 @@ const ids = ['renderDialog','chooseRenderDirectory','openRenderDirectory','openD
   'renderProgress','renderResult','renderError','cancelRender','confirmRender','renderClose'];
 const els = Object.fromEntries(ids.map(id=>[id,element()]));
 els.renderProgress.style={};
-const manual=element();
+const manual=element(),notice=element();
 let status={available:true,directory:null}, chosen='/chosen folder', chooserCalls=0, renders=[], warnings=[], pending;
-const ctx={els,document:{getElementById:()=>manual},IS_DESKTOP_HOST:false,
+const ctx={els,ITALIAN:{},document:{getElementById:id=>id==='renderBusyNotice'?notice:manual},IS_DESKTOP_HOST:false,
   window:{location:{origin:'http://127.0.0.1:5500'}},project:{exportRange:null,title:'test'},
   currentRenderJob:null,renderPollTimer:null,formatTime:String,t:x=>x,clone:structuredClone,
   toast:(...args)=>warnings.push(args),setTimeout:()=>0,clearTimeout(){},

@@ -24,6 +24,7 @@ function bindControls() {
   els.fontPick.addEventListener("click", () => els.fontInput.click());
   els.fontInput.addEventListener("change", () => handleFontFile(els.fontInput.files[0]));
   els.transcribeButton.addEventListener("click", () => transcribeSong());
+  els.whisperModel.addEventListener("change", updateModelInsight);
   els.cancelTranscription.addEventListener("click", stopTranscription);
 
   $$("button", els.backgroundType).forEach(button => button.addEventListener("click", () => {
@@ -179,7 +180,7 @@ function bindControls() {
   els.audioPlayer.addEventListener("error", () => reportMediaPreviewError(els.audioPlayer, "Source media"));
   els.backgroundVideo.addEventListener("error", () => reportMediaPreviewError(els.backgroundVideo, "Background video"));
   els.audioPlayer.addEventListener("loadedmetadata", () => {
-    if (Number.isFinite(els.audioPlayer.duration)) {
+    if (project.audio && Number.isFinite(els.audioPlayer.duration)) {
       project.audio.duration = els.audioPlayer.duration;
       project.duration = els.audioPlayer.duration;
       updateDurationUI(); scheduleSave();
@@ -254,15 +255,16 @@ function bindControls() {
       if (path) toast(`Project saved: ${path}`, "success");
     } catch (error) { toast(`Could not save project: ${error.message}`, "error"); }
   });
-  els.resetProjectButton.addEventListener("click", () => {
-    if (!confirm(t("Create a new project? Save your current project first to keep it."))) return;
+  els.resetProjectButton.addEventListener("click", async () => {
+    if (!await confirmAction("Create a new project? Save your current project first to keep it.")) return;
     els.audioPlayer.pause(); analysis = null; analysisPending = false; selectedFootageId = null;
     selectedWordIndex = 0; tapArmed = false; tapQueue = [];
     project = clone(DEFAULT_PROJECT); selectedCueId = project.cues[0].id; currentCueId = null;
     localStorage.removeItem(STORAGE_KEY); applyProjectToControls(); updateSyncSummary(); timeline?.fitAll(); seekTo(0); scheduleSave(); toast("Project reset.");
   });
 
-  els.renderClose.addEventListener("click", () => els.renderDialog.close());
+  els.renderClose.addEventListener("click", closeRenderDialog);
+  els.renderDialog.addEventListener("cancel", cancelRenderDialog);
   els.chooseRenderDirectory.addEventListener("click", chooseRenderDirectory);
   document.getElementById("manualRenderDirectory").addEventListener("click", showManualRenderDirectory);
   els.openRenderDirectory.addEventListener("click", openRenderDirectory);
@@ -271,6 +273,7 @@ function bindControls() {
   els.downloadRender.addEventListener("click", downloadRender);
   els.cancelRender.addEventListener("click", cancelRender);
   window.addEventListener("keydown", event => {
+    if(document.querySelector("dialog[open]"))return;
     if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); openRenderDialog(); }
     if (event.target.matches("input,textarea,select")) return;
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
@@ -297,18 +300,6 @@ function safeFilename(value) {
 
 function initTheme() {
   els.root.dataset.theme = localStorage.getItem(THEME_KEY) || localStorage.getItem(LEGACY_THEME_KEY) || "dark";
-}
-
-async function shutdownServer() {
-  if (!confirm("Save the current project and stop Phrasync?")) return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(project));
-  try {
-    const response = await fetch("/api/shutdown", { method: "POST" });
-    if (!response.ok) throw new Error(await response.text());
-    document.body.innerHTML = '<main class="shutdown-screen"><h1>Phrasync stopped.</h1><p>You can close this tab. Port released.</p></main>';
-  } catch (error) {
-    toast(`Could not stop Phrasync: ${error.message}`, "error");
-  }
 }
 
 function showHfTokenStatus(status) {
@@ -354,7 +345,7 @@ async function saveHfToken() {
 }
 
 async function removeHfToken() {
-  if (!confirm("Remove the saved Hugging Face token from this computer?")) return;
+  if (!await confirmAction("Remove the saved Hugging Face token from this computer?")) return;
   try {
     const result = await api("/api/settings/hugging-face", { method: "DELETE" });
     showHfTokenStatus(result.huggingFace);
@@ -370,6 +361,7 @@ function init() {
   setupTimeline();
   bindControls();
   initOceanControls();
+  initAtmosphereControls();
   initTextOrientation();
   initFootage();
   initEditorTools();

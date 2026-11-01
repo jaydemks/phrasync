@@ -23,6 +23,7 @@ def main():
     parser.add_argument('--origin', default='http://127.0.0.1:5565')
     parser.add_argument('--label', default='source')
     parser.add_argument('--api', action='store_true')
+    parser.add_argument('--expected-version', default='0.5.0')
     parser.add_argument('--group', choices=['all', 'core', 'extended'], default='all')
     parser.add_argument('--retry-failed', action='store_true', help='Keep passing results and rerun failed/new cases')
     parser.add_argument('--long', action='store_true', help='Also exercise a synthetic 270-second spectrum/particles project')
@@ -170,7 +171,7 @@ def main():
         with urllib.request.urlopen(request, timeout=30) as response:
             return json.load(response)
     try:
-        if args.api: assert api('/api/health')['version'] == '0.5.0'
+        if args.api: assert api('/api/health')['version'] == args.expected_version
         for name, p in cases:
             current = name
             output = root / f'{args.label}-{name}.mp4'

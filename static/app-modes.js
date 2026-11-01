@@ -4,7 +4,7 @@ const MODE_COPY = {
   lyric: {
     description: "Turn a song into a kinetic lyric video.",
     source: "Add song", hint: "WAV, MP3, FLAC, M4A…",
-    transcribe: "Transcribe song locally", section: "Local song transcription",
+    transcribe: "Generate lyrics", section: "AI lyrics",
     panel: "Lyrics", bulk: "Paste or OCR lyrics", placeholder: "One lyric cue per line…",
     importLabel: "Import lyrics", preview: "Add a song or scrub the timeline to preview",
     render: "Building your lyric video"
@@ -12,7 +12,7 @@ const MODE_COPY = {
   subtitles: {
     description: "Transcribe speech and burn readable subtitles directly into audio or video.",
     source: "Add video or audio", hint: "MP4/WebM · up to 16 GB · long-form video",
-    transcribe: "Transcribe media locally", section: "Local speech transcription",
+    transcribe: "Generate subtitles", section: "AI subtitles",
     panel: "Subtitles", bulk: "Paste or import transcript", placeholder: "One subtitle cue per line…",
     importLabel: "Import subtitles", preview: "Add media or scrub the timeline to preview",
     render: "Burning subtitles into your video"
@@ -102,9 +102,8 @@ function updatePresetPresentation() {
 }
 
 function applyEnvironmentUI() {
-  const fullWorld = project.background.type === "dynamic"
-    && project.background.visual === "scene3d";
-  els.environmentControls.hidden = !fullWorld;
+  els.environmentControls.hidden = false;
+  if(typeof refreshAtmosphereControls==="function")refreshAtmosphereControls();
   els.manualEnvironmentControls.hidden = project.background.environmentMode === "auto";
   if (project.background.environmentMode !== "auto") {
     els.environmentResolved.textContent = [
@@ -125,7 +124,8 @@ function applyModeUI() {
   els.audioInput.accept = mode === "subtitles"
     ? "audio/*,video/mp4,video/webm,.wav,.mp3,.m4a,.aac,.flac,.ogg,.opus,.mp4,.webm"
     : "audio/*,.wav,.mp3,.m4a,.aac,.flac,.ogg,.opus";
-  els.transcribeButton.textContent = t(copy.transcribe);
+  setTranscriptionButtonState(els.transcribeButton.disabled);
+  updateModelInsight();
   els.transcriptionSectionName.textContent = t(copy.section);
   els.cuePanelTitle.textContent = t(copy.panel);
   els.bulkLyricsLabel.textContent = t(copy.bulk);
@@ -135,8 +135,7 @@ function applyModeUI() {
   els.renderTitle.textContent = t(copy.render);
 }
 
-function resolvedEnvironmentAt(t) {
-  const bg = project.background;
+function resolvedEnvironmentAt(t,bg=project.background) {
   if (bg.environmentMode !== "auto") {
     return {
       weather: bg.weather, daytime: bg.daytime, season: bg.season,

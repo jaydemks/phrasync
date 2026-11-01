@@ -16,7 +16,7 @@ const footageEffects = [
   ["shake", "Beat shake (%)", 8], ["flash", "Beat flash (%)", 60],
   ["gradient", "Gradient opacity (%)", 80], ["particles", "Particles", 100],
   ["spectrum", "Spectrum intensity (%)", 150], ["bpm", "Effect tempo (BPM, 0 = audio analysis)", 300],
-  ["drop", "Beat drop zoom (%)", 30], ["pulse", "Beat light pulse (%)", 40]
+  ["drop", "Beat drop zoom (%)", 30], ["pulse", "Beat light pulse (%)", 40], ["lightLeak", "Light leak (%)", 100]
 ];
 Object.assign(ITALIAN, {
   "Footage & effects": "Montaggio e effetti", "Use footage timeline": "Usa traccia di sfondo",
@@ -44,8 +44,8 @@ function constrainFootage(clip) {
   clip.in = Math.max(0, Number(clip.in) || 0);
   clip.end = Math.max(clip.start + .05, Number(clip.end) || clip.start + 5);
   if (clip.asset.kind === "video" && clip.asset.duration > 0) {
-    clip.in = Math.min(clip.in, Math.max(0, clip.asset.duration - .05 * clip.rate));
-    clip.end = Math.min(clip.end, clip.start + (clip.asset.duration - clip.in) / clip.rate);
+    clip.in = clip.loop ? clip.in % clip.asset.duration : Math.min(clip.in, Math.max(0, clip.asset.duration - .05 * clip.rate));
+    if (!clip.loop) clip.end = Math.min(clip.end, clip.start + (clip.asset.duration - clip.in) / clip.rate);
   }
   for (const key of ["zoomStart", "zoomEnd"]) clip[key] = Math.max(1, Math.min(4, Number(clip[key]) || 1));
   for (const key of ["xStart", "yStart", "xEnd", "yEnd"]) clip[key] = Math.max(-1, Math.min(1, Number(clip[key]) || 0));
@@ -54,6 +54,7 @@ function constrainFootage(clip) {
 }
 function refreshFootageControls() {
   if (!document.getElementById("footageEnable")) return;
+  exposeLegacyBackground();
   const bg = project.background, select = document.getElementById("footageSelect");
   document.getElementById("footageEnable").checked = Boolean(bg.footageEnabled);
   const clips = bg.clips || [];
@@ -70,10 +71,13 @@ function refreshFootageControls() {
   document.getElementById("footageClipEditor").hidden = !clip;
   document.getElementById("clipLayerSettings").hidden = !clip;
   refreshVisualTrackControls(clip);
+  const loop=document.getElementById("clipLoop");loop.disabled=clip?.asset.kind!=="video";loop.checked=Boolean(clip?.loop);
+  document.getElementById("clipEnabled").checked=clip?.enabled!==false;
   for (const [key] of footageClipFields) if (clip) document.getElementById(`clip-${key}`).value = clip[key] ?? (key === "opacity" ? 1 : 0);
   for (const [key] of footageEffects) document.getElementById(`fx-${key}`).value = bg.effects?.[key] || 0;
   for (const key of ["color1", "color2"]) document.getElementById(`fx-${key}`).value = bg.effects?.[key] || (key === "color1" ? "#6b21a8" : "#ec4899");
   refreshMediaBin(); syncNumericSliders();
+  if(typeof refreshEffectControls==="function")refreshEffectControls();
   footageViewKey = ""; renderFootageLane();
 }
 function footageChanged() {
@@ -81,6 +85,7 @@ function footageChanged() {
   footageViewKey = ""; renderFootageLane(); updateDurationUI(); scheduleSave();
 }
 async function importFootage(files) {
+  const owner=project;
   const button = document.getElementById("footageAdd"); button.disabled = true;
   try {
     for (const file of files) {
@@ -88,6 +93,7 @@ async function importFootage(files) {
       const status = beginMediaImport(file);
       try {
         const asset = await uploadAsset(kind, file, status.progress); asset.kind = kind;
+        if(project!==owner){status.done();return;}
         if (kind === "video" && !(asset.duration > 0)) throw new Error("Cannot read video duration. Use MP4 or WebM.");
         (project.background.mediaLibrary ||= []).push(asset);
         status.done(); refreshFootageControls(); scheduleSave();
@@ -127,6 +133,7 @@ function initFootage() {
     input.addEventListener("input", () => { (project.background.effects ||= {})[key] = input.value; scheduleSave(); });
     label.append(span, input); controls.append(label);
   }
+  initEffectTracks();
   document.getElementById("footageEnable").addEventListener("change", event => { project.background.footageEnabled = event.target.checked; footageChanged(); });
   document.getElementById("footageAdd").addEventListener("click", () => document.getElementById("footageInput").click());
   document.getElementById("footageInput").addEventListener("change", event => importFootage([...event.target.files]));
@@ -141,7 +148,7 @@ function initFootage() {
     const copy = clone(clip), p = (time - clip.start) / (clip.end - clip.start);
     copy.fadeIn = 0; clip.fadeOut = 0;
     copy.id = crypto.randomUUID(); copy.start = time;
-    if (clip.asset.kind === "video") copy.in = clip.in + (time - clip.start) * clip.rate;
+    if (clip.asset.kind === "video") copy.in = clip.loop ? (clip.in + (time-clip.start)*clip.rate)%clip.asset.duration : clip.in + (time - clip.start) * clip.rate;
     for (const axis of ["x", "y", "zoom"]) {
       const value = clip[`${axis}Start`] * (1 - p) + clip[`${axis}End`] * p;
       clip[`${axis}End`] = value; copy[`${axis}Start`] = value;
@@ -177,23 +184,26 @@ function initFootage() {
     if (!clip) return;
     if (footageDrag.mode === "move") {
       clip.start = Math.max(0, original.start + delta); clip.end = clip.start + original.end - original.start;
-      clip.track = Math.max(0, Math.min((project.background.tracks?.length || 1)-1, Math.floor((event.clientY-lane.getBoundingClientRect().top)/38)));
+      clip.track = backgroundTrackAtY(event.clientY-lane.getBoundingClientRect().top);
     }
     else if (footageDrag.mode === "start") {
-      const bound = original.asset.kind === "video" ? -original.in / original.rate : -original.start;
+      const bound = original.asset.kind === "video" && !original.loop ? -original.in / original.rate : -original.start;
       const shift = Math.max(-original.start, Math.max(bound, Math.min(delta, original.end - original.start - .05)));
       clip.start = original.start + shift;
-      if (original.asset.kind === "video") clip.in = original.in + shift * original.rate;
+      if (original.asset.kind === "video") {
+        const next=original.in+shift*original.rate,duration=original.asset.duration;
+        clip.in=original.loop&&duration>0?((next%duration)+duration)%duration:next;
+      }
     } else clip.end = Math.max(clip.start + .05, original.end + delta);
     constrainFootage(clip);
-    const element = lane.querySelector(`[data-id="${clip.id}"]`); if (element) { positionFootageBlock(element, clip); element.style.top = `${3+(clip.track||0)*38}px`; }
+    const element = lane.querySelector(`[data-id="${clip.id}"]`); if (element) positionFootageBlock(element, clip);
   });
   const release = () => { if (!footageDrag) return; footageDrag = null; refreshFootageControls(); footageChanged(); };
   lane.addEventListener("pointerup", release); lane.addEventListener("pointercancel", release); lane.addEventListener("lostpointercapture", release);
   lane.addEventListener("auxclick", event => { if (event.button === 1) event.preventDefault(); });
   lane.addEventListener("wheel", event => {
     event.preventDefault(); timeline.follow = false;
-    if (event.ctrlKey) timeline.zoomAt(event.deltaY > 0 ? 1.18 : .85, event.clientX - lane.getBoundingClientRect().left);
+    if (event.ctrlKey || event.metaKey) { timeline.follow=false;timeline.zoomAt(event.deltaY > 0 ? 1.18 : .85, event.clientX - lane.getBoundingClientRect().left); }
     else timeline.setView(timeline.viewStart + (event.deltaX || event.deltaY) / 400 * timeline.viewSpan, timeline.viewSpan);
   }, { passive: false });
   lane.addEventListener("dblclick", () => { document.getElementById("footageSection").open = true; document.getElementById("footageSelect").focus(); });
@@ -208,25 +218,28 @@ function initFootage() {
 }
 function positionFootageBlock(element, clip) {
   const lane = document.getElementById("footageLane"), offset = project.timing.offset || 0;
+  element.style.top=`${3+backgroundTrackRow(clip.track||0)*38}px`;
   element.style.left = `${(clip.start - offset - timeline.viewStart) / timeline.viewSpan * lane.clientWidth}px`;
   element.style.width = `${Math.max(4, (clip.end - clip.start) / timeline.viewSpan * lane.clientWidth)}px`;
 }
 function renderFootageLane() {
+  if(typeof renderEffectsLane==="function")renderEffectsLane();
   const lane = document.getElementById("footageLane"); if (!lane || !timeline || footageDrag && !footageDrag.pan) return;
   const clips = project.background.clips || [];
   lane.style.height = `${(project.background.tracks?.length || 1) * 38}px`;
-  document.getElementById("timelineDock").style.minHeight = `${326 + ((project.background.tracks?.length || 1)-1)*38}px`;
-  const key = `${timeline.viewStart}:${timeline.viewSpan}:${lane.clientWidth}:${selectedFootageId}:${JSON.stringify(clips.map(c => [c.id,c.start,c.end,c.track]))}`;
+  const fxRows=Math.max(1,...(project.background.effectClips||[]).map(c=>(c.track||0)+1));
+  document.getElementById("timelineDock").style.minHeight = `${Math.min(460,406 + ((project.background.tracks?.length || 1)-1)*38+(fxRows-1)*34)}px`;
+  const key = `${timeline.viewStart}:${timeline.viewSpan}:${lane.clientWidth}:${project.background.tracks?.length || 1}:${selectedFootageId}:${JSON.stringify(clips.map(c => [c.id,c.start,c.end,c.track]))}`;
   if (key === footageViewKey) return; footageViewKey = key;
   lane.textContent = "";
   (project.background.tracks || ["V1"]).forEach((track,i) => {
-    const label=document.createElement("span"); label.className="footage-track-label"; label.style.top=`${i*38+11}px`; label.textContent=track; lane.append(label);
+    const label=document.createElement("span"); label.className="footage-track-label"; label.style.top=`${backgroundTrackRow(i)*38+11}px`; label.textContent=track; lane.append(label);
   });
   if (!clips.length) { lane.textContent = t("Drag media here"); return; }
   const offset = project.timing.offset || 0;
   for (const clip of clips.filter(c => c.end - offset > timeline.viewStart && c.start - offset < timeline.viewStart + timeline.viewSpan)) {
     const block = document.createElement("div"); block.className = `footage-block${clip.id === selectedFootageId ? " selected" : ""}`;
-    block.style.top = `${3 + (clip.track || 0) * 38}px`;
+    block.style.opacity=clip.enabled===false?".4":"1";
     block.dataset.id = clip.id; block.title = `${clip.asset.name} · ${clip.start.toFixed(2)}–${clip.end.toFixed(2)}s`;
     const name = document.createElement("span"); name.textContent = `V${(clip.track||0)+1} · ${clip.asset.kind === "visual" ? "◇" : clip.asset.kind === "image" ? "▧" : "▶"} ${clip.asset.name}`;
     const handles = ["start", "end"].map(edge => { const handle = document.createElement("i"); handle.dataset.edge = edge; handle.className = `footage-edge ${edge}`; return handle; });

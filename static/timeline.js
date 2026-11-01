@@ -89,17 +89,21 @@
       return Math.max(1, this.getState().duration || 1);
     }
 
+    get minSpan() { return Math.max(.02, 2/(Number(this.getState().fps)||30)); }
+
     setView(start, span) {
       const duration = this.duration();
-      this.viewSpan = clamp(span, 0.6, duration + 2);
+      this.viewSpan = clamp(span, this.minSpan, duration + 2);
       this.viewStart = clamp(start, -0.4, Math.max(0, duration - this.viewSpan * 0.25));
       this.onView(this.viewStart, this.viewSpan);
       this.draw();
     }
 
     zoomAt(factor, pivotX) {
+      this.follow=false;
+      if(factor>1 && this.viewSpan*factor>=this.duration()) { this.fitAll();return; }
       const pivotTime = this.xToTime(pivotX);
-      const span = clamp(this.viewSpan * factor, 0.6, this.duration() + 2);
+      const span = clamp(this.viewSpan * factor, this.minSpan, this.duration() + 2);
       const ratio = pivotX / Math.max(1, this.width);
       this.setView(pivotTime - span * ratio, span);
     }
@@ -427,8 +431,10 @@
 
     resize() {
       const rect = this.host.getBoundingClientRect();
+      const hostStyle=getComputedStyle(this.host);
+      const padding=(parseFloat(hostStyle.paddingLeft)||0)+(parseFloat(hostStyle.paddingRight)||0);
       this.dpr = IS_DESKTOP_HOST ? 1 : Math.min(1.5, window.devicePixelRatio || 1);
-      this.width = Math.max(200, Math.floor(rect.width));
+      this.width = Math.max(200, Math.floor(rect.width-padding));
       this.height = this.laneTops.bottom + 4;
       this.canvas.width = Math.floor(this.width * this.dpr);
       this.canvas.height = Math.floor(this.height * this.dpr);

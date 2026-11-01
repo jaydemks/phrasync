@@ -1,0 +1,15 @@
+Phrasync 0.5.1
+
+Improved recovery for exports that could stall with footage, particles and 3D lyrics. Bounded encoder waits and complete-pass fallback preserve the composition. Fixed black image/video backgrounds in some 3D exports.
+
+Export now clearly explains that editing is temporarily unavailable. Wait or cancel; controls recover after completion, failure or cancellation. Removed browser message boxes from app confirmations.
+
+Background images and looping videos are editable timeline clips. Shared zoom, pan, fit-selection and IN/OUT navigation work across lanes. Higher tracks appear above lower tracks.
+
+Four FX lanes let you place individual drops, pulses, light leaks and other effects, with intensity, fades and beat/transient/audio timing. Footage gradients sit beneath text.
+
+Rain, snow, fog, storms and leaves work with Ocean, other worlds, images and videos. Added intensity, wind, speed and lightning controls. Precipitation follows world-space 3D camera movement.
+
+Clearer model choices and Generate lyrics/subtitles controls, with generation and download states. Improved custom-font retry and protection from delayed results overwriting another project or newer edits.
+
+Reduced decoder churn and retained GPU resources in complex timelines. Tested with 350 automated Windows checks and real-project exports, including 4K, frame rates, layered footage and cancellation.

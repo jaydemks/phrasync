@@ -231,13 +231,14 @@ def _build_context(project: dict[str, Any], progress: ProgressCallback | None = 
     cue_duration = max((float(cue["end"]) for cue in cues), default=0.0)
     duration = max(float(project.get("duration") or 0.0), cue_duration)
     if background.get("footageEnabled"):
-        duration = max(duration, max((clip["end"] for clip in background.get("clips", [])), default=0))
+        duration = max(duration, max((clip["end"] for clip in background.get("clips", []) if clip.get('enabled',True)), default=0))
     if audio:
         duration = probe_duration(Path(audio.path)) or duration
         if background.get("footageEnabled"):
-            duration = max(duration, max((clip["end"] for clip in background.get("clips", [])), default=0))
+            duration = max(duration, max((clip["end"] for clip in background.get("clips", []) if clip.get('enabled',True)), default=0))
     if background_asset and background.get("type") == "video":
         duration = max(duration, probe_duration(Path(background_asset.path)) or 0)
+    duration = max(duration, max((float(c['end']) for c in background.get('effectClips') or [] if c.get('enabled', True)), default=0))
     if project.get("timelineDuration") is not None:
         duration = float(project["timelineDuration"])
         if not math.isfinite(duration) or duration < .5:

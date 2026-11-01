@@ -181,6 +181,17 @@
               </button>
             </div>
 
+            <details id="atmosphereSection" class="footage-panel" open>
+              <summary>Atmosphere</summary>
+              <div id="atmosphereSlot">
+                <p class="microcopy">Weather works with built-in worlds, images and video layers. Daytime and season do not recolour your footage.</p>
+                <label class="range-field"><span>Weather intensity <output id="weatherIntensityOut">100%</output></span><input id="weatherIntensity" type="range" min="0" max="150" value="100" /></label>
+                <label class="range-field"><span>Wind <output id="weatherWindOut">0%</output></span><input id="weatherWind" type="range" min="-100" max="100" value="0" /></label>
+                <label class="range-field"><span>Weather speed <output id="weatherSpeedOut">100%</output></span><input id="weatherSpeed" type="range" min="0" max="200" value="100" /></label>
+                <label class="toggle-row"><input id="weatherLightning" type="checkbox" checked /><span>Lightning flashes</span></label>
+                <p class="microcopy">Storms can include bright flashes. Turn off lightning if needed.</p>
+              </div>
+            </details>
             <details id="footageSection" class="footage-panel">
               <summary>Footage & effects</summary>
               <label class="toggle-row"><input id="footageEnable" type="checkbox" /><span>Use footage timeline</span></label>
@@ -197,11 +208,21 @@
               <div id="footageClipEditor" class="two-columns" hidden></div>
               <div id="clipLayerSettings" class="two-columns" hidden>
                 <label class="field"><span>Track</span><select id="clipTrack"></select></label>
+                <label class="toggle-row"><input id="clipLoop" type="checkbox" /><span>Loop video</span></label>
+                <label class="toggle-row"><input id="clipEnabled" type="checkbox" /><span>Enabled</span></label>
                 <label class="field"><span>Transition</span><select id="clipTransition"><option value="cut">Cut</option><option value="fade">Crossfade</option><option value="wipe">Wipe</option><option value="slide">Slide</option></select></label>
               </div>
               <p class="microcopy">Pan uses -1 to +1. Zoom above 1 creates space for panning. Gaps show the background color; overlapping clips use the latest start.</p>
               <div id="footageEffects" class="two-columns"></div>
               <label class="field"><span>Effect trigger</span><select id="fxTrigger"><option value="beat">Beat grid</option><option value="transient">Detected audio transients</option></select></label>
+              <details><summary>Global effect timing</summary><div id="globalEffectTiming" class="two-columns"></div></details>
+              <details id="effectClipControls"><summary>Timeline effect controls</summary>
+                <p class="microcopy">Timeline effects are independent of global effects. Set a global intensity to 0 for isolated hits.</p>
+                <select id="effectClipSelect" aria-label="Select an effect"></select>
+                <div id="effectInspector" class="two-columns" hidden></div>
+                <label class="toggle-row"><input id="effect-enabled" type="checkbox" /><span>Enabled</span></label>
+                <div class="footage-actions"><button id="effectDuplicate" type="button">Duplicate effect</button><button id="effectRemove" type="button">Remove effect</button></div>
+              </details>
               <p class="microcopy">Flash warning: bright flashes can affect photosensitive viewers. Keep intensity low or leave this effect off.</p>
             </details>
             <div class="asset-grid">
@@ -222,13 +243,13 @@
           <summary data-section="transcribe" style="--section-tint: #65e4b1"><span class="section-mark" aria-hidden="true">◉</span><span class="section-name" id="transcriptionSectionName">Local transcription</span></summary>
           <div class="section-body compact-fields">
             <div class="two-columns">
-              <label class="field"><span>Whisper model</span>
+              <label class="field model-field"><span>AI model</span>
                 <select id="whisperModel">
-                  <option value="tiny">Tiny: fastest</option>
-                  <option value="base" selected>Base: balanced</option>
-                  <option value="small">Small: cleaner</option>
-                  <option value="medium">Medium: accurate</option>
-                  <option value="large-v3">Large v3: best</option>
+                  <option value="tiny">Tiny · Quick draft</option>
+                  <option value="base" selected>Base · Everyday</option>
+                  <option value="small">Small · More detail</option>
+                  <option value="medium">Medium · High accuracy</option>
+                  <option value="large-v3">Large v3 · Highest accuracy</option>
                 </select>
               </label>
               <label class="field"><span>Language mode</span><input id="whisperLanguage" list="whisperLanguages" value="auto" /></label>
@@ -243,7 +264,13 @@
               </datalist>
             </div>
             <label class="toggle-row"><input id="vadFilter" type="checkbox" /><span><b>Speech VAD</b><small>Leave off for sung vocals</small></span></label>
-            <button class="button wide" id="transcribeButton" type="button">Transcribe song locally</button>
+            <p class="model-insight" id="modelInsight">A balanced starting point. Larger models can improve accuracy but need more time and memory.</p>
+            <button class="button wide generate-button" id="transcribeButton" type="button" aria-busy="false">
+              <svg class="generate-wand" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m3 21 11-11 3 3L6 24M13 11l3 3M5 3v4M3 5h4M19 2v4M17 4h4M21 17v4M19 19h4" transform="translate(0 -2)"/></svg>
+              <span id="transcribeButtonLabel">Generate lyrics</span>
+              <span class="generate-activity" aria-hidden="true"></span>
+            </button>
+            <p class="generation-privacy">Runs on your computer. First use downloads the selected model.</p>
             <div class="transcription-progress" id="transcriptionProgress" hidden>
               <div><span id="transcriptionMessage">Preparing transcription…</span><output id="transcriptionPercent">0%</output></div>
               <div class="transcription-track" role="progressbar" aria-label="Transcription progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="transcriptionProgressBar"></span></div>
@@ -512,16 +539,30 @@
             <button type="button" data-value="beat" title="Snap to the BPM grid">Beat</button>
             <button type="button" data-value="off" title="Disable snapping">Free</button>
           </div>
-          <button class="icon-button" id="zoomOutButton" type="button" title="Zoom out (Ctrl+rotella)">−</button>
-          <button class="icon-button" id="zoomInButton" type="button" title="Zoom in (Ctrl+rotella)">＋</button>
+          <button class="icon-button" id="zoomOutButton" type="button" title="Zoom out (-)">−</button>
+          <button class="icon-button" id="zoomInButton" type="button" title="Zoom in (+)">＋</button>
           <button class="icon-button" id="zoomFitButton" type="button" title="Show the entire song">⤢</button>
           <button class="chip" id="followToggle" type="button" title="Follow playback"><i></i><span>Follow</span></button>
           <span class="dock-hint">middle mouse = pan · drag = move · edges = duration · Shift = ripple · Alt = no snap</span>
         </div>
       </div>
+      <nav class="timeline-navigation" aria-label="Timeline navigation">
+        <button id="navPanLeft" type="button" title="Pan left (Page Up)">←</button>
+        <button id="navZoomOut" type="button" title="Zoom out (-)">− Zoom</button>
+        <input id="timelineZoom" type="range" min="0" max="100" step="0.1" value="0" aria-label="Timeline zoom" title="Zoom around the playhead. Ctrl/Cmd + wheel zooms at the pointer on every track." />
+        <button id="navZoomIn" type="button" title="Zoom in (+)">+ Zoom</button>
+        <output id="timelineSpan" aria-label="Visible timeline duration">0 s</output>
+        <button id="navFitAll" type="button" title="Fit all (Backslash / Shift+Z)">Fit all</button>
+        <button id="navFitSelection" type="button" title="Fit selection (F)">Fit selection</button>
+        <button id="navFitRange" type="button" title="Fit IN/OUT (Shift+R)">Fit IN/OUT</button>
+        <button id="navPlayhead" type="button" title="Center playhead (Shift+P)">Playhead</button>
+        <button id="navPanRight" type="button" title="Pan right (Page Down)">→</button>
+      </nav>
       <div class="timeline-canvas-wrap" id="timelineWrap"><canvas id="timelineCanvas"></canvas></div>
       <div class="footage-lane-title"><strong>Background footage</strong><span>Drag = move · edges = trim · double click = edit</span><div id="footageTools" class="footage-tools" hidden><button id="footageSplit" type="button">Split at playhead</button><button id="footageDuplicate" type="button">Duplicate clip</button><button id="footageRemove" type="button">Remove clip</button></div></div>
       <div id="footageLane" class="footage-lane" role="region" aria-label="Background footage"></div>
+      <div class="effects-lane-header"><strong>Effects timeline</strong><select id="effectKind" aria-label="Effect type"></select><button id="effectAdd" class="button secondary" type="button">Add FX at playhead</button><small>Drag FX to move; drag edges to resize. Alt disables snapping.</small></div>
+      <div id="effectsLane" class="effects-lane" tabindex="0" role="region" aria-label="Effects timeline"></div>
       <div class="export-range-controls">
         <button id="markExportIn" type="button">Set IN (I)</button><input id="exportIn" type="number" min="0" step="0.01" aria-label="Export IN seconds">
         <button id="markExportOut" type="button">Set OUT (O)</button><input id="exportOut" type="number" min="0" step="0.01" aria-label="Export OUT seconds">
@@ -657,6 +698,7 @@
       <div class="render-visual"><div class="render-pulse"></div><strong id="renderPercent">0%</strong></div>
       <div class="progress-track"><span id="renderProgress"></span></div>
       <p id="renderMessage">Preparing critic pass…</p>
+      <p id="renderBusyNotice" class="render-busy-notice" role="status" hidden>Export in progress. Editing is temporarily unavailable. Wait for completion or choose Cancel render to return to the editor.</p>
       <div class="render-result" id="renderResult" hidden>
         <strong>MP4 is ready.</strong><span id="renderMeta"></span>
         <a class="button primary" id="downloadRender" href="#">Download MP4</a>
@@ -669,13 +711,16 @@
   <div class="toast-stack" id="toastStack" aria-live="polite"></div>
   <script src="/static/diagnostics.js" defer></script>
   <script src="/static/i18n.js" defer></script>
+  <script src="/static/app-dialogs.js" defer></script>
   <script src="/static/kinetic.js" defer></script>
   <script src="/static/scene3d.js" defer></script>
   <script src="/static/scene3d-draw.js" defer></script>
   <script type="module" src="/static/scene3d-gl.js"></script>
   <script src="/static/timeline.js" defer></script>
   <script src="/static/app-state.js" defer></script>
+  <script src="/static/app-project-tasks.js" defer></script>
   <script src="/static/app-modes.js" defer></script>
+  <script src="/static/app-atmosphere.js" defer></script>
   <script src="/static/app-ocean.js" defer></script>
   <script src="/static/app-text-orientation.js" defer></script>
   <script src="/static/app-ui.js" defer></script>
@@ -686,6 +731,9 @@
   <script src="/static/gpu-encoder.js" defer></script>
   <script src="/static/footage-decoder.js" defer></script>
   <script src="/static/media-effects.js" defer></script>
+  <script src="/static/effect-automation.js" defer></script>
+  <script src="/static/app-background-bridge.js" defer></script>
+  <script src="/static/app-effect-tracks.js" defer></script>
   <script src="/static/visual-clips.js" defer></script>
   <script src="/static/app-footage.js" defer></script>
   <script src="/static/app-media-bin.js" defer></script>
@@ -697,6 +745,7 @@
   <script src="/static/app-render.js" defer></script>
   <script src="/static/store-updates.js" defer></script>
   <script src="/static/app-timeline.js" defer></script>
+  <script src="/static/app-timeline-navigation.js" defer></script>
   <script src="/static/app-export-range.js" defer></script>
   <script src="/static/app.js" defer></script>
 </body>

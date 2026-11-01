@@ -5,14 +5,39 @@ import copy
 import math
 from .storage import get_asset
 from .media import probe_duration
+from .effect_automation import validate_automation
 
 EFFECTS = {"bw": 100, "pendulum": 15, "shake": 8, "flash": 60, "gradient": 80,
-           "particles": 100, "spectrum": 150, "bpm": 300, "drop": 30, "pulse": 40}
+           "particles": 100, "spectrum": 150, "bpm": 300, "drop": 30, "pulse": 40, "lightLeak": 100,
+           "rain":150, "snow":150, "fog":150, "storm":150, "leaves":150}
+
+
+def atmosphere_enabled(bg: dict) -> bool:
+    return float(bg.get('weatherIntensity', 1)) > 0 and (
+        bg.get('environmentMode') == 'auto' or bg.get('weather') in {'rain','snow','fog','storm','leaves'})
+
+
+def weather_only_world(project: dict) -> bool:
+    """Native 3D precipitation needs no extra canvas composition or encoder."""
+    bg=project.get('background') or {}
+    weather={'rain','snow','fog','storm','leaves'}
+    return (bg.get('type')=='dynamic' and bg.get('visual')=='scene3d' and not bg.get('footageEnabled')
+        and not any(float((bg.get('effects') or {}).get(key) or 0)>0 for key in EFFECTS if key not in weather|{'bpm'})
+        and not any(c.get('enabled',True) and c.get('kind') not in weather for c in bg.get('effectClips') or []))
+
+
+def validate_atmosphere(bg: dict) -> None:
+    for key, low, high, default in [('weatherIntensity',0,1.5,1),('weatherWind',-1,1,0),('weatherSpeed',0,2,1)]:
+        value = float(bg.get(key, default))
+        if not math.isfinite(value) or not low <= value <= high:
+            raise ValueError(f'Invalid atmosphere setting: {key}')
+    if not isinstance(bg.get('weatherLightning',True),bool):
+        raise ValueError('Invalid lightning setting')
 
 
 def effects_enabled(project: dict) -> bool:
     bg = project.get("background") or {}
-    return bool(bg.get("footageEnabled")) or any(
+    return bool(bg.get("footageEnabled")) or atmosphere_enabled(bg) or any(c.get('enabled', True) for c in bg.get('effectClips') or []) or any(
         float((bg.get("effects") or {}).get(key) or 0) > 0 for key in EFFECTS if key != "bpm"
     )
 
@@ -20,6 +45,10 @@ def effects_enabled(project: dict) -> bool:
 def prepare_footage(project: dict) -> dict:
     project = copy.deepcopy(project)
     bg = project.setdefault("background", {})
+    validate_atmosphere(bg)
+    if bg.get('type', 'dynamic') not in {'dynamic', 'image', 'video'}:
+        raise ValueError('Unknown background type')
+    validate_automation(bg, EFFECTS)
     fx = bg.get("effects") or {}
     for key, maximum in EFFECTS.items():
         value = float(fx.get(key) or 0)
@@ -38,16 +67,21 @@ def prepare_footage(project: dict) -> dict:
             bg[kind + "Asset"] = asset.public()
         return project
     clips = bg.get("clips") or []
-    if not isinstance(clips, list) or not clips:
-        raise ValueError("Add images or videos to the footage timeline before exporting")
+    if not isinstance(clips, list):
+        raise ValueError("Invalid footage timeline")
     durations = {}
     tracks = bg.get("tracks") or ["V1"]
     if not isinstance(tracks, list) or not 1 <= len(tracks) <= 4:
         raise ValueError("Use between one and four background tracks")
     for clip in clips:
+        if not isinstance(clip.get('enabled',True),bool):
+            raise ValueError('Invalid clip enabled state')
+        if clip.get('enabled',True) is False:
+            continue
         data = clip.get("asset") or {}
         if data.get("kind") == "visual":
             settings = data.get("settings") or {}
+            validate_atmosphere(settings)
             if settings.get("visual") not in {"aurora", "particles", "equalizer", "grid", "scene", "scene3d"}:
                 raise ValueError("Unknown integrated visual")
             if settings.get("sceneKit", "japan") not in {"japan", "italy", "china", "usa", "ocean"}:
@@ -81,10 +115,12 @@ def prepare_footage(project: dict) -> dict:
             raise ValueError("Clip pan or zoom is outside the supported range")
         clip.update(numbers)
         if data.get("kind") == "video":
+            if not isinstance(clip.get('loop', False), bool):
+                raise ValueError('Invalid video loop setting')
             if asset.id not in durations:
                 durations[asset.id] = probe_duration(asset.path)
             duration = durations[asset.id]
-            if duration is None or numbers["in"] + (numbers["end"] - numbers["start"]) * numbers["rate"] > duration + .04:
+            if duration is None or numbers['in'] >= duration or (not clip.get('loop') and numbers["in"] + (numbers["end"] - numbers["start"]) * numbers["rate"] > duration + .04):
                 raise ValueError("Video clip extends beyond its source. Adjust Source in, end or speed.")
             clip["asset"]["duration"] = duration
     return project

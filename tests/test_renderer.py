@@ -114,7 +114,9 @@ def test_render_flat_odyssey_mp4(tmp_path):
             "type": "dynamic", "visual": visual, "textSpace": "flat",
             "sceneKit": "japan", "sceneDirection": "forward",
             "sceneSpeed": 1, "sceneDensity": 1, "sceneSeed": 1337,
-            "weather": "rain", "daytime": "sunset", "season": "summer",
+            # Dry 2D visuals retain the lightweight CPU path. Weather uses the
+            # shared WebGL composition, exercised by qa_weather_051.py.
+            "weather": "clear", "daytime": "sunset", "season": "summer",
         },
     )
     result = render_project(project, output)

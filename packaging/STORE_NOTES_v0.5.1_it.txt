@@ -1,0 +1,15 @@
+Phrasync 0.5.1
+
+Migliorato il recupero degli export che potevano bloccarsi con footage, particelle e testi 3D. Attese limitate e percorsi di compatibilità preservano la composizione. Corretti gli sfondi immagine/video neri in alcuni export 3D.
+
+Durante l'export un avviso spiega che le modifiche sono temporaneamente disabilitate. È possibile attendere o annullare. I controlli si ripristinano dopo completamento, errore o annullamento. Conferme integrate nell'app.
+
+Immagini e video in loop diventano clip modificabili in timeline. Zoom, scorrimento, selezione e intervallo IN/OUT condividono i controlli. Le tracce superiori appaiono sopra quelle inferiori.
+
+Quattro tracce FX per singoli drop, impulsi, light leak e altri effetti, con intensità, dissolvenze e tempi legati a beat, transienti o audio. Il gradiente del footage resta sotto il testo.
+
+Pioggia, neve, nebbia, temporali e foglie funzionano con Ocean, altri mondi, immagini e video. Controlli per intensità, vento, velocità e lampi. Le precipitazioni seguono la prospettiva 3D del mondo.
+
+Scelta modelli e pulsanti Genera testo/sottotitoli più chiari. Migliorato il recupero dei font. Risultati tardivi non sovrascrivono altri progetti o modifiche recenti. Ridotti i riavvii dei decoder e l'accumulo di risorse GPU.
+
+350 test automatici Windows e verifiche su progetti reali, inclusi 4K, framerate, livelli e annullamento.

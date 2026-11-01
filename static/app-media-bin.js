@@ -19,14 +19,15 @@ function libraryAssets() {
   for (const clip of bg.clips || []) if (!library.some(a => a.id === clip.asset.id)) library.push(clone(clip.asset));
   return library;
 }
-function addMediaClip(assetId, time = currentPlaybackTime(), track = 0) {
+function addMediaClip(assetId, time = currentPlaybackTime(), track = null) {
   const asset = libraryAssets().find(a => a.id === assetId); if (!asset) return;
   if (!project.background.tracks?.length) project.background.tracks = ["V1"];
-  track = Math.max(0, Math.min(project.background.tracks.length-1, track));
+  track = track===null ? project.background.tracks.length-1 : Math.max(0, Math.min(project.background.tracks.length-1, track));
   const start = Math.max(0, Number(time) || 0);
   const clip = { id: crypto.randomUUID(), asset: clone(asset), start, end: start + (asset.duration || 5), in: 0, rate: 1,
     zoomStart: 1, zoomEnd: 1, xStart: 0, yStart: 0, xEnd: 0, yEnd: 0, track, opacity:1, fadeIn:0, fadeOut:0, transition:"cut" };
   (project.background.clips ||= []).push(clip); selectedFootageId = clip.id;
+  window.VFTimelineNavigation?.selectLane("footage");
   project.background.footageEnabled = true;
   refreshFootageControls(); footageChanged();
   if (asset.kind !== "visual") VFMedia.preload?.(asset);
@@ -104,7 +105,7 @@ function initMediaBin() {
       const id = event.dataTransfer.getData("application/x-phrasync-media");
       if (target === lane && id) {
         const x = event.clientX - lane.getBoundingClientRect().left;
-        const track = Math.min((project.background.tracks?.length || 1) - 1, Math.max(0, Math.floor((event.clientY - lane.getBoundingClientRect().top)/38)));
+        const track = backgroundTrackAtY(event.clientY-lane.getBoundingClientRect().top);
         addMediaClip(id, timeline.xToTime(x) + (project.timing.offset || 0), track);
       }
     });

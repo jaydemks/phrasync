@@ -69,6 +69,10 @@ def main() -> None:
                         "--specpath", str(output / "spec")])
     print("Building a portable folder for the current operating system…")
     subprocess.run(command, cwd=ROOT, check=True)
+    if os.name == 'nt':
+        dist = (args.out.resolve() / 'dist' if args.out else ROOT / 'dist') / 'Phrasync'
+        subprocess.run([sys.executable, str(ROOT / 'scripts/verify_local_candidate.py'), str(dist)],
+                       cwd=ROOT, check=True)
     print(f"Done: {(args.out.resolve() / 'dist' if args.out else ROOT / 'dist') / 'Phrasync'}")
     print("Build separately on Windows, macOS and Linux for native binaries on each platform.")
 

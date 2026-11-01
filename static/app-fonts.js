@@ -2,6 +2,7 @@
 
 const customFontLoads = new Map();
 const customFontReady = new Set();
+const customFontFailures = new Set();
 
 function lyricFontStack(style = project.style) {
   const fallback = fontStacks[style.fontPreset] || fontStacks.impact;
@@ -23,7 +24,8 @@ async function ensureCustomFont(id = project.style.fontAssetId) {
     })();
     customFontLoads.set(id, load);
   }
-  await customFontLoads.get(id);
+  try {await customFontLoads.get(id);}
+  catch(error){customFontFailures.add(id);throw error;}
 }
 
 function applyCustomFont() {
@@ -47,18 +49,23 @@ document.getElementById("fontLibrary").addEventListener("focus", refreshFontLibr
 document.getElementById("fontLibrary").addEventListener("change", async event => {
   const id = event.target.value;
   if (!id) return;
+  const request=beginProjectOperation("font-import",{source:false});
   try {
     const asset = await api(`/api/fonts/${encodeURIComponent(id)}/select`, { method: "POST" });
+    if(!request.valid())return;
     await useCustomFont(asset);
   } catch (error) { toast(error.message, "error"); }
 });
 document.getElementById("resetCustomFont").addEventListener("click", () => {
+  beginProjectOperation("font-import",{source:false});
   project.style.fontAssetId = null; project.style.fontName = null;
   els.fontPick.textContent = t("Upload TTF/OTF");
   applyStageStyle(); restartLyricAnimation(); scheduleSave();
 });
 
 async function useCustomFont(asset) {
+  beginProjectOperation("font-import",{source:false});
+  if(customFontFailures.delete(asset.id))customFontLoads.delete(asset.id);
   project.style.fontAssetId = asset.id; project.style.fontName = asset.name;
   els.fontPick.textContent = asset.name;
   scheduleSave();

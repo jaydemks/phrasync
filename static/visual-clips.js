@@ -11,9 +11,12 @@ window.VFVisualClips = (() => {
       target = { flat: document.createElement("canvas"), gl: document.createElement("canvas"), snapshot: document.createElement("canvas"), particles: [], size: "" };
       targets.set(key, target);
     }
+    // Four tracks can show two clips each during a transition. Keep this LRU
+    // bounded even when older, hidden clips still overlap the current time.
+    targets.delete(key);targets.set(key,target);
     const saved = { bg: project.background, flat: els.visualCanvas, gl: els.glCanvas, particles, size: lastParticleSize };
     try {
-      project.background = { ...saved.bg, ...settings, type: "dynamic", footageEnabled: false, textSpace: "flat" };
+      project.background = { ...saved.bg, ...settings, effects:{}, effectClips:[], effectSettings:{}, type: "dynamic", footageEnabled: false, textSpace: "flat" };
       els.visualCanvas = target.flat; els.glCanvas = target.gl;
       particles = target.particles; lastParticleSize = target.size;
       const scene = drawDynamicVisual(time * 1000);
@@ -24,7 +27,7 @@ window.VFVisualClips = (() => {
         scene.update(time, { direction:bg.sceneDirection || "forward", artStyle:bg.artStyle || "cinematic", secondaryMotion:bg.secondaryMotion || "none",
           motionAmount:bg.motionAmount ?? .35, speed:sceneSpeedFor(bg,bg.visualIntensity), density:bg.sceneDensity ?? 1, seed:bg.sceneSeed || 1337,
           sunAzimuth:bg.sunAzimuth ?? 25,sunElevation:bg.sunElevation ?? 12,moonAzimuth:bg.moonAzimuth ?? -25,moonElevation:bg.moonElevation ?? 18,
-          waveStrength:bg.oceanWaveStrength ?? .65,pulse:bg.sceneBeat ? audioAmplitude() : 0, environment:resolvedEnvironmentAt(time),
+          waveStrength:bg.oceanWaveStrength ?? .65,pulse:bg.sceneBeat ? audioAmplitude() : 0, environment:atmosphereStateAt(time),
           wave:Boolean(bg.sceneWave),waveColor:bg.waveColor||"#4de2ff",waveIntensity:bg.waveIntensity??1,spectrum:bg.sceneWave?spectrumSnapshot():null });
         scene.render();
       }
@@ -34,7 +37,7 @@ window.VFVisualClips = (() => {
       if (scene && settings.visual !== "scene3d") ctx.drawImage(target.gl,0,0,width,height);
       target.particles = particles; target.size = lastParticleSize;
       // Retain only currently used clip targets, disposing GPU contexts from previous cuts.
-      for (const [id, old] of targets) if (id !== key && !(saved.bg.clips || []).some(c => c.id === id && currentPlaybackTime() >= c.start && currentPlaybackTime() < c.end)) {
+      for (const [id, old] of targets) if (id !== key && (targets.size>8 || !(saved.bg.clips || []).some(c => c.id === id && c.enabled!==false && (c.opacity??1)>0 && currentPlaybackTime() >= c.start && currentPlaybackTime() < c.end))) {
         if (old.world) { const gl = old.gl.getContext("webgl2"); gl?.getExtension("WEBGL_lose_context")?.loseContext(); }
         targets.delete(id);
       }

@@ -25,8 +25,8 @@ def test_footage_rewrites_client_url_and_keeps_original_project(tmp_path):
 
 
 def test_footage_requires_existing_media_and_valid_effects():
-    with pytest.raises(ValueError, match="Add images"):
-        prepare_footage({"background": {"footageEnabled": True}})
+    # Removing the last timeline clip leaves a valid empty background.
+    assert prepare_footage({"background": {"footageEnabled": True}})['background']['footageEnabled']
     with pytest.raises(ValueError, match="Invalid footage effect"):
         prepare_footage({"background": {"effects": {"flash": 1000}}})
     with pytest.raises(ValueError, match="missing"):

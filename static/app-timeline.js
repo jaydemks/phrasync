@@ -9,18 +9,25 @@ async function ensureAnalysis(force = false) {
     toast(project.mode === "subtitles" ? "Load a video or audio file first." : "Load a song first.", "error");
     return null;
   }
-  if (analysis && !force) return analysis;
-  if (analysisPending) return null;
+  if (analysis && !force && (!projectOperations.has("analysis")||projectOperationMatches("analysis"))) return analysis;
+  if (analysisPending && projectOperationMatches("analysis")) {
+    const pending=projectOperations.get("analysis");
+    return pending.promise.then(result=>pending.valid()?result:null).catch(()=>null);
+  }
+  const request=beginProjectOperation("analysis",{label:els.analyzeButton.textContent});
   analysisPending = true;
-  const label = els.analyzeButton.textContent;
+  const label = request.label;
   els.analyzeButton.disabled = true;
   els.analyzeButton.textContent = "Analyzing…";
   try {
-    analysis = await api("/api/analyze", {
+    request.promise = api("/api/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ assetId: project.audioAssetId, refresh: force })
     });
+    const result=await request.promise;
+    if(!request.valid())return null;
+    analysis=result;
     project.timing.bpm = analysis.bpm || 0;
     project.timing.beatOffset = analysis.beatOffset || 0;
     project.background.effectOnsets = analysis.percussiveOnsets?.length ? analysis.percussiveOnsets : analysis.onsets || [];
@@ -29,12 +36,15 @@ async function ensureAnalysis(force = false) {
     scheduleSave();
     return analysis;
   } catch (error) {
-    toast(`Analysis failed: ${error.message}`, "error");
+    if(request.valid())toast(`Analysis failed: ${error.message}`, "error");
     return null;
   } finally {
+    request.active=false;
+    if(request.latest()) {
     analysisPending = false;
     els.analyzeButton.disabled = false;
     els.analyzeButton.textContent = label;
+    }
   }
 }
 function updateSyncSummary(stats = null) {
@@ -73,12 +83,13 @@ async function runAutoAlign(options = {}) {
     return toast("There are no phrases to align.", "error");
   }
   if (auto && !project.audioAssetId) return null;
-  const data = await ensureAnalysis();
-  if (!data) return null;
-  const label = els.autoAlignButton.textContent;
+  const request=beginProjectOperation("alignment",{cues:true,label:els.autoAlignButton.textContent});
+  const label = request.label;
   els.autoAlignButton.disabled = true;
   els.autoAlignButton.textContent = "Aligning…";
   try {
+    const data = await ensureAnalysis();
+    if (!data || !request.valid()) return null;
     const result = await api("/api/align", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -94,6 +105,7 @@ async function runAutoAlign(options = {}) {
         }
       })
     });
+    if(!request.valid()){if(request.latest())toast(t("The project or lyrics changed while aligning. Your current edits were kept."));return null;}
     project.cues = result.cues;
     selectedCueId = project.cues.find(cue => cue.id === selectedCueId)?.id || project.cues[0]?.id || null;
     renderCueList(); updateDurationUI(); restartLyricAnimation(); scheduleSave();
@@ -106,10 +118,13 @@ async function runAutoAlign(options = {}) {
       result.stats.score >= 60 ? "success" : ""
     );
   } catch (error) {
-    toast(`Alignment failed: ${error.message}`, "error");
+    if(request.valid())toast(`Alignment failed: ${error.message}`, "error");
   } finally {
+    request.active=false;
+    if(request.latest()) {
     els.autoAlignButton.disabled = false;
     els.autoAlignButton.textContent = label;
+    }
   }
 }
 
@@ -258,6 +273,7 @@ function timelineState() {
     exportOffset: project.timing.offset || 0,
     analysis,
     audioLoaded: Boolean(project.audioAssetId),
+    fps: project.canvas.fps,
     snap: project.timing.snapMode !== "off",
     snapOnsets: project.timing.snapMode === "onset",
     snapBeats: project.timing.snapMode === "beat"
@@ -279,6 +295,7 @@ function setupTimeline() {
     if (Math.abs(scrollbar.scrollLeft - expectedScroll) > 1) scrollbar.scrollLeft = expectedScroll;
     els.followToggle.classList.toggle("off", !timeline.follow);
     renderFootageLane();
+    window.VFTimelineNavigation?.refresh();
   };
   timeline = window.VFTimeline.create({
     canvas: els.timelineCanvas,
@@ -320,15 +337,11 @@ function setupTimeline() {
     timeline.setView(scrollbar.scrollLeft / Math.max(1, scrollbar.clientWidth) * timeline.viewSpan, timeline.viewSpan);
   });
 
-  const zoomPlayhead = factor => {
-    const time = currentPlaybackTime() - (project.timing.offset || 0);
-    const span = Math.max(.6, Math.min(timeline.duration() + 2, timeline.viewSpan * factor));
-    timeline.follow = false;
-    timeline.setView(time - span / 2, span);
-  };
-  els.zoomInButton.addEventListener("click", () => zoomPlayhead(.6));
-  els.zoomOutButton.addEventListener("click", () => zoomPlayhead(1.7));
-  els.zoomFitButton.addEventListener("click", () => timeline.fitAll());
+  window.VFTimelineNavigation.init();
+  const zoomPlayhead = factor => window.VFTimelineNavigation.zoom(factor);
+  els.zoomInButton.addEventListener("click", () => zoomPlayhead(1/1.5));
+  els.zoomOutButton.addEventListener("click", () => zoomPlayhead(1.5));
+  els.zoomFitButton.addEventListener("click", () => window.VFTimelineNavigation.fitAll());
   els.followToggle.addEventListener("click", () => {
     timeline.follow = !timeline.follow;
     els.followToggle.classList.toggle("off", !timeline.follow);

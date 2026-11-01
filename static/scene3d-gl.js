@@ -8,7 +8,7 @@
  * world.
  */
 import * as THREE from "/static/vendor/three.module.min.js";
-import { createEnvironment, updateEnvironment } from "/static/scene3d-environment.js";
+import { createEnvironment, updateEnvironment, updateWeather } from "/static/scene3d-environment.js";
 import { createWorld, updateWorld, sceneryPoint } from "/static/scene3d-world.js";
 import { createExpeditions, updateExpeditions } from "/static/scene3d-expeditions.js";
 import { createOcean, updateOcean, updateOceanCamera } from "/static/scene3d-ocean.js";
@@ -654,7 +654,7 @@ const personalityFor = spec => PERSONALITY[spec && spec.id] || PERSONALITY["kine
 class Odyssey {
   constructor(canvas) {
     this.canvas = canvas;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.camera = new THREE.PerspectiveCamera(62, 16 / 9, 0.5, 900);
@@ -688,7 +688,8 @@ class Odyssey {
     this.ambientLight = null;
     this.keyLight = null;
     this.rimLight = null;
-    this.environment = null;
+    this.environment = createEnvironment(THREE, {});
+    scene.add(this.environment.group);
     this.waveField = makeWaveField(0x4de2ff);
     this.waveField.visible = false;
     scene.add(this.waveField);
@@ -711,7 +712,8 @@ class Odyssey {
       key.position.set(-3, 8, 4); this.scene.add(key);
       this.ocean = createOcean(THREE); this.scene.add(this.ocean.group);
       this.slots = []; this.sky = null; this.ridges = null; this.ground = null;
-      this.waveField = null; this.environment = null; this.expeditions = null;
+      this.waveField = null; this.environment = createEnvironment(THREE, theme); this.expeditions = null;
+      this.scene.add(this.environment.group);
       this.textMeshes.clear(); this.textLayer = new THREE.Group();
       return;
     }
@@ -813,6 +815,7 @@ class Odyssey {
     if (this.ocean) {
       updateOceanCamera(this.camera, t, options);
       updateOcean(THREE, this.ocean, { ...options, t, camera: this.camera });
+      updateWeather(THREE, this.environment, {camera:this.camera,t,state:environment,surfaceY:0});
       return this;
     }
 
@@ -820,6 +823,7 @@ class Odyssey {
       // Text-only scene: just fly the camera so planted words still stream past.
       this.camera.position.set(0, 3.4, -travel);
       this.camera.rotation.set(0, 0, 0);
+      updateWeather(THREE, this.environment, {camera:this.camera,t,state:environment});
       if (this.waveField) {
         this.waveField.visible = Boolean(wave);
         if (wave) {
@@ -890,7 +894,7 @@ class Odyssey {
     }
 
     updateEnvironment(THREE, this.environment, {
-      scene: this.scene, sky: this.sky, ground: this.ground, camera: this.camera.position,
+      scene: this.scene, sky: this.sky, ground: this.ground, camera: this.camera,
       ambient: this.ambientLight, key: this.keyLight, rim: this.rimLight,
       travelLight: this.travelLight, t, state: environment
     });

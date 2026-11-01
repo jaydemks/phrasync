@@ -7,15 +7,17 @@ window.VFMedia = (() => {
   function enabled(p = project) { return Boolean(p.background.footageEnabled); }
   function usesCanvas(p = project) {
     const fx = p.background.effects || {};
-    return enabled(p) || ["bw", "pendulum", "shake", "flash", "gradient", "particles", "spectrum", "drop", "pulse"].some(key => positive(fx[key]) > 0);
+    const world=!enabled(p)&&p.background.type==="dynamic"&&p.background.visual==="scene3d";
+    const weather=["rain","snow","fog","storm","leaves"];
+    return enabled(p) || (!world && typeof atmosphereActive === "function" && atmosphereActive(p.background)) || (p.background.effectClips || []).some(c=>c.enabled!==false&&(!world||!weather.includes(c.kind))) || ["bw", "pendulum", "shake", "flash", "gradient", "particles", "spectrum", "drop", "pulse", "lightLeak"].some(key => positive(fx[key]) > 0);
   }
   function activeClip(time, p = project) {
-    return (p.background.clips || []).filter(c => time >= c.start && time < c.end)
+    return (p.background.clips || []).filter(c => c.enabled!==false && time >= c.start && time < c.end)
       .sort((a, b) => a.start - b.start).at(-1) || null;
   }
   function activeLayers(time) {
     const layers = new Map();
-    for (const c of [...(project.background.clips || [])].sort((a,b) => a.start-b.start)) if (time >= c.start && time < c.end && (c.opacity ?? 1)>0) {
+    for (const c of [...(project.background.clips || [])].sort((a,b) => a.start-b.start)) if (c.enabled!==false && time >= c.start && time < c.end && (c.opacity ?? 1)>0) {
       const track=c.track||0; const list=layers.get(track)||[]; list.push(c); layers.set(track,list);
     }
     return [...layers.entries()].sort((a,b)=>a[0]-b[0]).flatMap(entry=>{
@@ -35,7 +37,8 @@ window.VFMedia = (() => {
     element.addEventListener(asset.kind === "video" ? "loadeddata" : "load", () => { value.ready = true; });
     if (asset.kind === "video") { element.muted = true; element.playsInline = true; element.preload = "auto"; }
     element.src = asset.url || `/media/${encodeURIComponent(asset.id)}`;
-    while (resources.size > 9) {
+    // Eight visible clips (four crossfades) plus two pre-roll decoders.
+    while (resources.size > 10) {
       const key = resources.keys().next().value, old = resources.get(key).element;
       old.pause?.(); old.removeAttribute("src"); old.load?.(); resources.delete(key);
     }
@@ -52,6 +55,7 @@ window.VFMedia = (() => {
   }
   function sourceTime(clip, t, video) {
     const desired = clip.in + Math.max(0, t - clip.start) * clip.rate;
+    if (clip.loop && video.duration > 0) return ((desired % video.duration)+video.duration)%video.duration;
     return Math.max(0, Math.min(desired, Math.max(0, video.duration - .001)));
   }
   async function seekExact(video, time) {
@@ -105,34 +109,51 @@ window.VFMedia = (() => {
     const sh = source.videoHeight || source.naturalHeight || source.displayHeight || source.height;
     const p = clip ? Math.max(0, Math.min(1, (t - clip.start) / Math.max(.01, clip.end - clip.start))) : 0;
     const lerp = (a, b) => positive(a) * (1 - p) + positive(b) * p;
-    const angle = positive(fx.pendulum) * Math.sin(t * Math.PI * .8) * Math.PI / 180;
-    const pulse = beat(t, amplitude), shake = positive(fx.shake) * pulse / 100;
+    const angle = level("pendulum",t,amplitude) * Math.sin(t * Math.PI * .8) * Math.PI / 180;
+    const shake = level("shake",t,amplitude) / 100;
     const zoom = clip ? lerp(clip.zoomStart ?? 1, clip.zoomEnd ?? 1) : 1;
     // Cover rotated corners, so effects never expose a torn black strip.
     const overscan = Math.abs(Math.cos(angle)) + Math.abs(Math.sin(angle)) * Math.max(w / h, h / w);
-    const scale = Math.max(w / sw, h / sh) * Math.max(1, zoom) * (overscan + shake * 2) * (1 + positive(fx.drop)/100*pulse);
+    const scale = Math.max(w / sw, h / sh) * Math.max(1, zoom) * (overscan + shake * 2) * (1 + level("drop",t,amplitude)/100);
     const dw = sw * scale, dh = sh * scale;
     const x = clip ? lerp(clip.xStart, clip.xEnd) : 0, y = clip ? lerp(clip.yStart, clip.yEnd) : 0;
     ctx.translate(w / 2 + Math.sin(t * 83) * w * shake, h / 2 + Math.cos(t * 97) * h * shake);
     ctx.rotate(angle);
-    ctx.filter = `grayscale(${Math.max(0, Math.min(1, positive(fx.bw) / 100))}) blur(${positive(project.background.blur) * Math.min(w, h) / 1080}px) brightness(${positive(project.background.brightness, 1)})`;
+    ctx.filter = `grayscale(${level("bw",t,amplitude) / 100}) blur(${positive(project.background.blur) * Math.min(w, h) / 1080}px) brightness(${positive(project.background.brightness, 1)})`;
     ctx.drawImage(source, -dw / 2 + x * Math.max(0, dw - w) / 2, -dh / 2 + y * Math.max(0, dh - h) / 2, dw, dh);
     ctx.restore();
+  }
+  function level(key,t,amplitude) {
+    if (window.VFEffects) return window.VFEffects.value(key,t,amplitude,project);
+    return positive(project.background.effects?.[key]) * (["drop","pulse","flash","shake"].includes(key) ? beat(t,amplitude) : 1);
+  }
+  function drawGradient(ctx,t=0,amplitude=0) {
+    const fx = project.background.effects || {}, w = ctx.canvas.width, h = ctx.canvas.height;
+    const strength = level("gradient",t,amplitude) / 100;
+    if (strength <= 0) return;
+    ctx.save();
+    const fill = ctx.createLinearGradient(0, 0, w, h);
+    fill.addColorStop(0, fx.color1 || "#6b21a8"); fill.addColorStop(1, fx.color2 || "#ec4899");
+    ctx.globalAlpha = strength; ctx.fillStyle = fill; ctx.fillRect(0, 0, w, h); ctx.restore();
+  }
+  function gradientUnderText() {
+    return enabled() || project.background.type !== "dynamic" || project.background.visual !== "scene3d";
   }
   function drawOverlay(ctx, t, amplitude) {
     const fx = project.background.effects || {}, w = ctx.canvas.width, h = ctx.canvas.height;
     ctx.save();
-    const light = positive(fx.pulse)/100 * beat(t,amplitude);
+    const light = level("pulse",t,amplitude)/100;
     if (light > 0) { ctx.globalAlpha=light; ctx.fillStyle=fx.color1 || "#a855f7"; ctx.fillRect(0,0,w,h); }
-    const gradient = positive(fx.gradient) / 100;
-    if (gradient > 0) {
-      const fill = ctx.createLinearGradient(0, 0, w, h);
-      fill.addColorStop(0, fx.color1 || "#6b21a8"); fill.addColorStop(1, fx.color2 || "#ec4899");
-      ctx.globalAlpha = gradient; ctx.fillStyle = fill; ctx.fillRect(0, 0, w, h);
+    if (!gradientUnderText()) drawGradient(ctx,t,amplitude);
+    const leak=level("lightLeak",t,amplitude)/100;
+    if (leak>0) {
+      const fill=ctx.createRadialGradient(w*(.2+.12*Math.sin(t*1.7)),h*.35,0,w*.15,h*.35,w*.9);
+      fill.addColorStop(0,fx.color1 || "#ff9b63");fill.addColorStop(1,"transparent");
+      ctx.globalAlpha=leak;ctx.fillStyle=fill;ctx.fillRect(0,0,w,h);
     }
-    const flash = positive(fx.flash) / 100 * beat(t, amplitude);
+    const flash = level("flash",t,amplitude) / 100;
     if (flash > 0) { ctx.globalAlpha = flash; ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h); }
-    const count = Math.round(positive(fx.particles) * 1.5);
+    const count = Math.round(level("particles",t,amplitude) * 1.5);
     ctx.fillStyle = fx.color2 || "#ec4899";
     for (let i = 0; i < count; i++) {
       const hash = n => ((Math.sin(n * 127.1 + 311.7) * 43758.5453) % 1 + 1) % 1;
@@ -141,7 +162,8 @@ window.VFMedia = (() => {
       ctx.globalAlpha = .25 + .5 * hash(i + 6);
       ctx.beginPath(); ctx.arc(x, y, (1 + hash(i + 2) * 2) * Math.min(w, h) / 540, 0, Math.PI * 2); ctx.fill();
     }
-    if (positive(fx.spectrum) > 0) {
+    const spectrumIntensity=level("spectrum",t,amplitude);
+    if (spectrumIntensity > 0) {
       const spectrum = window.__vfExportSpectrum || spectrumSnapshot() || [];
       const bins = Math.min(64, spectrum.length), base = h * .94;
       ctx.globalAlpha = .9; ctx.strokeStyle = fx.color1 || "#a855f7";
@@ -149,7 +171,7 @@ window.VFMedia = (() => {
       ctx.beginPath();
       for (let i = 0; i <= bins; i++) {
         const x = w * (.04 + .92 * i / Math.max(1, bins));
-        const y = base - Math.max(0, spectrum[Math.min(i, bins - 1)] || 0) * h * .18 * positive(fx.spectrum) / 100;
+        const y = base - Math.max(0, spectrum[Math.min(i, bins - 1)] || 0) * h * .18 * spectrumIntensity / 100;
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.stroke();
@@ -232,7 +254,7 @@ window.VFMedia = (() => {
       // Each clip has its own decoder, even when it reuses the same asset.
       // Pre-roll a trimmed clip before its visible cut, so decoder startup and
       // clock convergence do not happen in the middle of a crossfade.
-      const upcoming=(project.background.clips||[]).filter(c=>c.start>t&&c.start-t<1)
+      const upcoming=(project.background.clips||[]).filter(c=>c.enabled!==false&&c.start>t&&c.start-t<1)
         .sort((a,b)=>a.start-b.start).slice(0,2);
       for (const next of upcoming) {
         if (next.asset.kind === "visual") continue;
@@ -260,7 +282,8 @@ window.VFMedia = (() => {
       for (const entry of resources.values()) if (!activeVideos.has(entry.element)) entry.element.pause?.();
     }
     else drawBase(baseCtx,source,clip,t,amplitude);
+    if (gradientUnderText()) drawGradient(baseCtx,t,amplitude);
     const ctx = overlay.getContext("2d"); ctx.clearRect(0, 0, width, height); drawOverlay(ctx, t, amplitude);
   }
-  return { enabled, usesCanvas, activeClip, preview, exportBase, drawOverlay, preload: resource, syncVideo };
+  return { enabled, usesCanvas, activeClip, preview, exportBase, drawOverlay, drawGradient, gradientUnderText, sourceTime, preload: resource, syncVideo };
 })();

@@ -4,6 +4,25 @@ let completedRenderJob = null;
 let selectedRenderDirectory = null;
 let renderStarting = false;
 let choosingRenderDirectory = false;
+let renderCancelRequested = false;
+const RENDER_BUSY_NOTICE = "Export in progress. Editing is temporarily unavailable. Wait for completion or choose Cancel render to return to the editor.";
+Object.assign(ITALIAN,{
+  [RENDER_BUSY_NOTICE]:"Esportazione in corso. Le modifiche sono temporaneamente disabilitate. Attendi il completamento oppure scegli Annulla rendering per tornare all’editor.",
+  "Cancellation requested…":"Annullamento richiesto…", "Export cancelled. You can edit your project again.":"Esportazione annullata. Puoi modificare nuovamente il progetto.",
+  "The export session is no longer available. Your project is unchanged. Start the export again.":"La sessione di esportazione non è più disponibile. Il progetto è rimasto invariato. Avvia di nuovo l’esportazione."
+});
+function setRenderBusy(busy) {
+  const notice=document.getElementById("renderBusyNotice");notice.hidden=!busy;notice.textContent=t(RENDER_BUSY_NOTICE);
+  els.renderClose.disabled=busy;els.chooseRenderDirectory.disabled=busy;
+  els.renderDirectoryInput.disabled=busy;document.getElementById("manualRenderDirectory").disabled=busy;
+}
+function closeRenderDialog() {
+  if(renderStarting||currentRenderJob){toast(t(RENDER_BUSY_NOTICE));return;}
+  els.renderDialog.close();
+}
+function cancelRenderDialog(event) {
+  if(renderStarting||currentRenderJob){event.preventDefault();toast(t(RENDER_BUSY_NOTICE));}
+}
 
 function desktopExportApi() {
   return window.pywebview?.api || null;
@@ -14,7 +33,7 @@ function showManualRenderDirectory() {
 }
 
 async function openRenderDialog() {
-  if (currentRenderJob) {
+  if (currentRenderJob || renderStarting) {
     if (!els.renderDialog.open) els.renderDialog.showModal();
     return;
   }
@@ -107,6 +126,7 @@ async function downloadRender(event) {
 }
 
 function resetRenderModal() {
+  renderCancelRequested=false;els.cancelRender.disabled=false;setRenderBusy(false);
   els.renderPercent.textContent = "0%";
   els.renderProgress.style.width = "0%";
   els.renderMessage.textContent = t("Choose a folder and start export.");
@@ -125,6 +145,8 @@ async function startRender() {
     toast(t("Choose where to save your exports before starting a render."), "error"); return;
   }
   renderStarting = true;
+  els.renderError.hidden=true;els.renderResult.hidden=true;els.renderPercent.textContent="0%";els.renderProgress.style.width="0%";
+  renderCancelRequested=false;els.cancelRender.disabled=false;setRenderBusy(true);
   els.confirmRender.hidden = true;
   els.cancelRender.hidden = false;
   els.chooseRenderDirectory.disabled = true;
@@ -138,8 +160,10 @@ async function startRender() {
       body: JSON.stringify({ title: project.title, project: exportProject, outputDirectory: directory })
     });
     currentRenderJob = response.id;
+    if(renderCancelRequested)await cancelRender();
     pollRender();
   } catch (error) {
+    setRenderBusy(false);renderCancelRequested=false;els.cancelRender.disabled=false;
     els.confirmRender.hidden = false;
     els.cancelRender.hidden = true;
     els.chooseRenderDirectory.disabled = false;
@@ -159,6 +183,7 @@ async function pollRender() {
     els.renderProgress.style.width = `${percent}%`;
     els.renderMessage.textContent = job.message || job.state;
     if (job.state === "complete") {
+      setRenderBusy(false);renderCancelRequested=false;els.cancelRender.disabled=false;
       completedRenderJob = job.id;
       currentRenderJob = null;
       els.cancelRender.hidden = true;
@@ -173,17 +198,24 @@ async function pollRender() {
       return;
     }
     if (job.state === "failed" || job.state === "cancelled") {
+      setRenderBusy(false);renderCancelRequested=false;els.cancelRender.disabled=false;
       currentRenderJob = null;
       els.cancelRender.hidden = true;
       els.confirmRender.hidden = false;
       els.chooseRenderDirectory.disabled = false;
       els.renderError.hidden = false;
       els.renderError.textContent = job.error || `Render ${job.state}.`;
+      if(job.state==="cancelled") {els.renderError.hidden=true;els.renderMessage.textContent=t("Export cancelled. You can edit your project again.");}
       if (job.preflight && !job.preflight.ok) showReport(job.preflight, "Blocking preflight report");
       return;
     }
     renderPollTimer = setTimeout(pollRender, 700);
   } catch (error) {
+    if([404,410].includes(error.status)){
+      currentRenderJob=null;renderCancelRequested=false;setRenderBusy(false);els.cancelRender.hidden=true;els.cancelRender.disabled=false;els.confirmRender.hidden=false;
+      els.renderMessage.textContent=t("The export session is no longer available. Your project is unchanged. Start the export again.");
+      els.renderError.hidden=true;return;
+    }
     els.renderError.hidden = false;
     els.renderError.textContent = error.message;
     renderPollTimer = setTimeout(pollRender, 1400);
@@ -191,11 +223,14 @@ async function pollRender() {
 }
 
 async function cancelRender() {
+  if(renderStarting&&!currentRenderJob){renderCancelRequested=true;els.cancelRender.disabled=true;els.renderMessage.textContent=t("Cancellation requested…");return;}
   if (!currentRenderJob) return;
+  els.cancelRender.disabled=true;
   try {
     await api(`/api/render/${currentRenderJob}/cancel`, { method: "POST" });
-    els.renderMessage.textContent = "Cancellation requested…";
+    els.renderMessage.textContent = t("Cancellation requested…");
   } catch (error) {
+    els.cancelRender.disabled=false;
     toast(error.message, "error");
   }
 }

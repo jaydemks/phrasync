@@ -41,23 +41,45 @@ export function createEnvironment(THREE, theme) {
     weatherGeometry(THREE, 620, true),
     new THREE.LineBasicMaterial({ color: 0xa9d8ff, transparent: true, opacity: 0.48, depthWrite: false })
   );
+  const flakeCanvas=document.createElement("canvas");flakeCanvas.width=flakeCanvas.height=32;
+  const flakeCtx=flakeCanvas.getContext("2d"),fade=flakeCtx.createRadialGradient(16,16,1,16,16,16);
+  fade.addColorStop(0,"white");fade.addColorStop(.35,"rgba(255,255,255,.9)");fade.addColorStop(1,"rgba(255,255,255,0)");
+  flakeCtx.fillStyle=fade;flakeCtx.fillRect(0,0,32,32);
+  const flakeTexture=new THREE.CanvasTexture(flakeCanvas);
   const flakes = new THREE.Points(
     weatherGeometry(THREE, 560),
-    new THREE.PointsMaterial({ color: 0xe9f5ff, size: 0.24, transparent: true, opacity: 0.82, depthWrite: false })
+    new THREE.PointsMaterial({ color: 0xe9f5ff, size: 0.24, map:flakeTexture, alphaTest:.02, transparent: true, opacity: 0.82, depthWrite: false })
   );
+  const leaves=new THREE.Points(weatherGeometry(THREE,320),new THREE.PointsMaterial({color:0xe07032,size:.34,map:flakeTexture,alphaTest:.02,transparent:true,opacity:.85,depthWrite:false}));
+  leaves.frustumCulled=false;leaves.visible=false;
   rain.frustumCulled = flakes.frustumCulled = false;
   rain.visible = flakes.visible = false;
-  group.add(rain, flakes);
+  group.add(rain, flakes, leaves);
+  group.userData.ownedTextures=[flakeTexture];
+  const fogGeometry=new THREE.BufferGeometry();fogGeometry.setAttribute("position",new THREE.Float32BufferAttribute([-1,-1,0,3,-1,0,-1,3,0],3));
+  const fogUniforms={amount:{value:0},flash:{value:0},time:{value:0},tint:{value:new THREE.Color(0xd5dfeb)}};
+  const fog=new THREE.Mesh(fogGeometry,new THREE.ShaderMaterial({uniforms:fogUniforms,transparent:true,depthTest:false,depthWrite:false,toneMapped:false,
+    vertexShader:`varying vec2 uvFog;void main(){uvFog=position.xy*.5+.5;gl_Position=vec4(position.xy,0.,1.);}`,
+    fragmentShader:`varying vec2 uvFog;uniform float amount,flash,time;uniform vec3 tint;
+      void main(){float drift=.88+.12*sin(uvFog.x*9.+time*.19+sin(uvFog.y*7.-time*.11));
+      float haze=amount*mix(.35,1.,smoothstep(0.,.72,uvFog.y))*drift;
+      gl_FragColor=vec4(mix(tint,vec3(1.),flash),clamp(max(haze,flash),0.,.85));
+      #include <colorspace_fragment>
+      }` }));
+  fog.frustumCulled=false;fog.renderOrder=-9000;fog.visible=false;group.add(fog);
 
   const canvas = document.createElement("canvas");
   canvas.width = 32; canvas.height = 512;
   const skyTexture = new THREE.CanvasTexture(canvas);
   skyTexture.colorSpace = THREE.SRGBColorSpace;
+  group.userData.ownedTextures.push(skyTexture);
 
   return {
-    group, rain, flakes, canvas, skyTexture, theme,
+    group, rain, flakes, leaves, fog, fogUniforms, canvas, skyTexture, theme,
+    velocity:new THREE.Vector3(),
     rainSeed: seededValues(620 * 3, 0x7135),
     flakeSeed: seededValues(560 * 3, 0x51f0),
+    leafSeed: seededValues(320 * 3, 0x6eaf),
     signature: ""
   };
 }
@@ -93,39 +115,72 @@ function paintSky(environment, palette) {
   environment.skyTexture.needsUpdate = true;
 }
 
-function updateRain(environment, camera, t, storm) {
+function updateRain(environment, camera, t, storm, wind=0, surfaceY=null) {
   const position = environment.rain.geometry.attributes.position;
   const seed = environment.rainSeed;
   const speed = storm ? 34 : 24;
+  const velocity=environment.velocity.set(wind*12,-speed,0);
+  const origin=camera.position||camera;
   for (let index = 0; index < seed.length / 3; index += 1) {
-    const x = camera.x + (seed[index * 3] - 0.5) * 72;
-    const y = 0.4 + wrap(seed[index * 3 + 1] * 24 - t * speed, 24);
-    const z = camera.z - 3 - seed[index * 3 + 2] * 105;
+    // Rebase world-space particles near the camera, without attaching them to
+    // its translation or rotation. Wrapping occurs only at volume boundaries.
+    const x = wrap(seed[index * 3]*96+t*velocity.x-origin.x+48,96)-48;
+    const y = surfaceY===null ? wrap(seed[index * 3+1]*64+t*velocity.y-origin.y+32,64)-32
+      : surfaceY+wrap(seed[index * 3+1]*64+t*velocity.y,64)-origin.y;
+    const z = wrap(seed[index * 3+2]*128-origin.z+64,128)-64;
     const offset = index * 6;
     position.array[offset] = x; position.array[offset + 1] = y; position.array[offset + 2] = z;
-    position.array[offset + 3] = x - (storm ? 0.65 : 0.24);
-    position.array[offset + 4] = y - (storm ? 2.6 : 1.5);
-    position.array[offset + 5] = z + 0.18;
+    position.array[offset + 3] = x+velocity.x*.065;
+    position.array[offset + 4] = surfaceY===null ? y+velocity.y*.065 : Math.max(surfaceY-origin.y,y+velocity.y*.065);
+    position.array[offset + 5] = z+velocity.z*.065;
   }
   position.needsUpdate = true;
 }
 
-function updateFlakes(environment, camera, t, leaves) {
-  const position = environment.flakes.geometry.attributes.position;
-  const seed = environment.flakeSeed;
+function updateFlakes(environment, camera, t, leaves, wind=0, surfaceY=null) {
+  const target=leaves?environment.leaves:environment.flakes;
+  const position = target.geometry.attributes.position;
+  const seed = leaves?environment.leafSeed:environment.flakeSeed;
+  const velocity=environment.velocity.set(wind*4,leaves?-2.5:-1.4,0);
+  const origin=camera.position||camera;
   for (let index = 0; index < seed.length / 3; index += 1) {
     const phase = seed[index * 3] * Math.PI * 2;
-    const x = camera.x + (seed[index * 3] - 0.5) * 62
+    const x = wrap(seed[index * 3]*96+t*velocity.x-origin.x+48,96)-48
       + Math.sin(t * (leaves ? 1.8 : 0.65) + phase) * (leaves ? 4 : 1.2);
-    const y = 0.3 + wrap(seed[index * 3 + 1] * 22 - t * (leaves ? 2.5 : 1.4), 22);
-    const z = camera.z - 3 - seed[index * 3 + 2] * 95;
+    const y = surfaceY===null ? wrap(seed[index * 3+1]*64+t*velocity.y-origin.y+32,64)-32
+      : surfaceY+wrap(seed[index * 3+1]*64+t*velocity.y,64)-origin.y;
+    const z = wrap(seed[index * 3+2]*128-origin.z+64,128)-64;
     position.setXYZ(index, x, y, z);
   }
   position.needsUpdate = true;
 }
 
+export function updateWeather(THREE, environment, {camera,t,state={},screenFog=true,surfaceY=null}) {
+  if(!environment)return {};
+  const levels=state.levels || {[state.weather||"clear"]:1};
+  const level=key=>Math.max(0,Math.min(1.5,Number(levels[key])||0));
+  const storm=level('storm'),rain=Math.max(level('rain'),storm),snow=level('snow'),leaves=level('leaves');
+  const speed=Math.max(0,Math.min(2,state.speed??1)),wind=Math.max(-1,Math.min(1,state.wind||0));
+  environment.group.position.copy(camera.position||camera);
+  environment.group.quaternion.identity();
+  for(const [object,amount,count,multiplier]of [[environment.rain,rain,620,2],[environment.flakes,snow,560,1],[environment.leaves,leaves,320,1]]){
+    object.visible=amount>0;object.geometry.setDrawRange(0,Math.floor(count*Math.min(1,amount))*multiplier);
+    object.material.opacity=Math.min(.95,(object===environment.rain ? .48 : .82)*amount);
+  }
+  if(rain>0)updateRain(environment,camera,t*speed,storm>0,wind,surfaceY);
+  if(snow>0)updateFlakes(environment,camera,t*speed,false,wind,surfaceY);
+  if(leaves>0)updateFlakes(environment,camera,t*speed,true,wind,surfaceY);
+  const flash=state.lightning!==false&&speed>0?Math.pow(Math.max(0,Math.sin(t*2.73+1.4)-.965)/.035,3)*storm*.6:0;
+  environment.fogUniforms.amount.value=screenFog?Math.min(.8,level('fog')*.68+storm*.1+rain*.025+snow*.025):0;
+  environment.fogUniforms.flash.value=screenFog?Math.min(.7,flash):0;
+  environment.fogUniforms.time.value=t*speed;
+  environment.fog.visible=environment.fogUniforms.amount.value>0||environment.fogUniforms.flash.value>0;
+  return {rain,snow,leaves,storm,fog:level('fog')};
+}
+
 export function updateEnvironment(THREE, environment, context) {
   const { scene, sky, ground, camera, ambient, key, rim, travelLight, t, state } = context;
+  const levels=updateWeather(THREE,environment,{camera,t,state,screenFog:!sky});
   if (!environment || !sky) return;
   const palette = blendedPalette(THREE, state);
   const signature = [state.daytime, state.nextDaytime, state.season, state.nextSeason,
@@ -151,26 +206,19 @@ export function updateEnvironment(THREE, environment, context) {
   sky.children[2].visible = sky.children[3].visible = state.daytime !== "day";
 
   const weather = state.weather || "clear";
-  const storm = weather === "storm";
-  const rain = weather === "rain" || storm;
-  const flakes = weather === "snow" || weather === "leaves";
-  environment.rain.visible = rain;
-  environment.flakes.visible = flakes;
-  if (rain) updateRain(environment, camera, t, storm);
-  if (flakes) {
-    const leaves = weather === "leaves";
-    environment.flakes.material.color.set(leaves ? 0xe07032 : 0xe9f5ff);
-    environment.flakes.material.size = leaves ? 0.34 : 0.24;
-    updateFlakes(environment, camera, t, leaves);
-  }
+  const storm = levels.storm>0;
 
   const fogRange = { clear: [30, 260], rain: [18, 170], snow: [16, 150], fog: [7, 78], storm: [9, 105], leaves: [22, 205] }[weather] || [30, 260];
   scene.fog.color.copy(palette.fog);
-  scene.fog.near = fogRange[0]; scene.fog.far = fogRange[1];
+  scene.fog.near=30;scene.fog.far=260;
+  for(const [kind,amount]of Object.entries(levels)){
+    const range={rain:[18,170],snow:[16,150],fog:[7,78],storm:[9,105],leaves:[22,205]}[kind];
+    if(range){scene.fog.near=Math.min(scene.fog.near,30+(range[0]-30)*Math.min(1,amount));scene.fog.far=Math.min(scene.fog.far,260+(range[1]-260)*Math.min(1,amount));}
+  }
   scene.background.copy(palette.fog);
   ground.material.color.copy(palette.ground);
 
-  const flashWave = storm ? Math.max(0, Math.sin(t * 2.73 + 1.4) - 0.965) / 0.035 : 0;
+  const flashWave = storm && state.lightning!==false ? Math.max(0, Math.sin(t * 2.73 + 1.4) - 0.965) / 0.035*Math.min(1,levels.storm) : 0;
   const flash = Math.pow(Math.min(1, flashWave), 3);
   ambient.color.copy(palette.horizon); ambient.intensity = palette.ambient + flash * 1.8;
   key.color.copy(palette.key); key.intensity = 0.9 + palette.ambient * 0.45 + flash * 3;

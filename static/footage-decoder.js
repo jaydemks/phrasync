@@ -6,7 +6,7 @@ window.VFFootageDecoder = (() => {
   const readers = new Map();
   const bytes = text => Uint8Array.from(atob(text), c => c.charCodeAt(0));
   async function request(key, action, time=0) {
-    const response = await fetch(`${window.__vfFootageFramesEndpoint}?id=${encodeURIComponent(key)}&action=${action}&time=${time}`);
+    const response = await fetch(`${window.__vfFootageFramesEndpoint}?id=${encodeURIComponent(key)}&action=${action}&time=${time}`, {signal: AbortSignal.timeout(15000)});
     if (!response.ok || response.status === 204) throw new Error("Use browser video decoder");
     return response.json();
   }
@@ -45,7 +45,13 @@ window.VFFootageDecoder = (() => {
         if (performance.now()>deadline) throw new Error("Sequential footage decode timed out");
         const data = await request(key, "read");
         for (const packet of data.packets) reader.decoder.decode(new EncodedVideoChunk({...packet,data:bytes(packet.data)}));
-        if (data.eof) { await reader.decoder.flush(); reader.eof = true; }
+        if (data.eof) {
+          let timer;
+          try { await Promise.race([reader.decoder.flush(), new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error("Footage decoder flush timed out")), 15000);
+          })]); } finally { clearTimeout(timer); }
+          reader.eof = true;
+        }
         else {
           while (reader.decoder.decodeQueueSize > 0) {
             if (reader.failure) throw reader.failure;

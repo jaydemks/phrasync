@@ -16,7 +16,7 @@ from .media import ffmpeg_exe
 from .processes import background_flags
 from .encoding import bitrate_bps, rate_control_args
 from .diagnostics import log_event
-from .footage import effects_enabled
+from .footage import effects_enabled, weather_only_world
 from .audio_spectrum import SpectrumSource
 from .storage import get_av_asset
 from .frame_bridge import frame_bridge
@@ -75,13 +75,23 @@ class _DevTools:
     def __init__(self, url: str, port: int):
         self.socket = connect(url, origin=f"http://localhost:{port}", max_size=None)
         self.counter = 0
+        self.cancel_check = None
+        self.command_timeout = 90
 
     def call(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         self.counter += 1
         request_id = self.counter
         self.socket.send(json.dumps({"id": request_id, "method": method, "params": params or {}}))
+        deadline = time.monotonic() + self.command_timeout
         while True:
-            reply = json.loads(self.socket.recv())
+            if self.cancel_check and self.cancel_check():
+                raise RuntimeError('Render cancelled')
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f'Export browser stopped responding during {method} ({self.command_timeout}s)')
+            try:
+                reply = json.loads(self.socket.recv(timeout=min(1, max(.001, deadline-time.monotonic()))))
+            except TimeoutError:
+                continue
             if reply.get("id") != request_id:
                 continue
             if "error" in reply:
@@ -110,8 +120,8 @@ class _DevTools:
 
 def _needs_spectrum(project):
     bg = project.get("background") or {}
-    settings = [(clip.get("asset") or {}).get("settings") or {} for clip in bg.get("clips") or []]
-    return bool((bg.get("effects") or {}).get("spectrum", 0) > 0 or bg.get("sceneWave")
+    settings = [(clip.get("asset") or {}).get("settings") or {} for clip in bg.get("clips") or [] if clip.get('enabled',True)]
+    return bool((bg.get("effects") or {}).get("spectrum", 0) > 0 or any(c.get('kind') == 'spectrum' and c.get('enabled', True) for c in bg.get('effectClips') or []) or bg.get("sceneWave")
                 or bg.get("visual") == "equalizer" or any(
                     spec.get("visual") == "equalizer" or spec.get("sceneWave") for spec in settings))
 
@@ -121,7 +131,7 @@ def _fallback_reason(project, frame_transform):
         return "single-pass flat text composition"
     if bitrate_bps(project) is not None:
         return "custom bitrate requested"
-    if effects_enabled(project):
+    if effects_enabled(project) and not weather_only_world(project):
         return "shared footage and effects composition"
     if project.get("audioAssetId") and _needs_spectrum(project):
         return "offline audio spectrum"
@@ -168,7 +178,14 @@ def _encode_gpu_canvas(devtools, project, path, *, width, height, fps, frame_cou
                             progress(.06+.82*end/frame_count, f'Rendering frame {end}/{frame_count} (GPU canvas encoder)')
                     devtools.evaluate('VFGPUEncoder.finish()')
                 finally:
-                    devtools.evaluate('VFGPUEncoder.abort()')
+                    previous_timeout = devtools.command_timeout
+                    devtools.command_timeout = 2
+                    try:
+                        devtools.evaluate('VFGPUEncoder.abort()', await_promise=False)
+                    except Exception as cleanup_error:
+                        log_event('warning', 'render', f'GPU encoder cleanup: {cleanup_error}')
+                    finally:
+                        devtools.command_timeout = previous_timeout
         log_event('info', 'render', f'GPU canvas encoding: {frame_count} frames in {time.monotonic()-started:.2f}s')
         return True
     finally:
@@ -285,7 +302,25 @@ def _encode_canvas_stream(devtools, project, path, *, width, height, fps, frame_
                 encoder.stdin.close()
 
 
-def render_webgl_video(
+class GPUExportRetry(RuntimeError):
+    """Retry in a clean browser after a failed or stalled WebCodecs session."""
+
+
+def render_webgl_video(project, encoded_path, **kwargs):
+    try:
+        return _render_webgl_video_once(project, encoded_path, **kwargs)
+    except GPUExportRetry as error:
+        cancel = kwargs.get('cancel_check')
+        if cancel and cancel():
+            raise RuntimeError('Render cancelled') from error
+        log_event('warning', 'render', f'GPU canvas recovery: restarting the complete pass in a fresh browser: {error}')
+        progress = kwargs.get('progress')
+        if progress:
+            progress(.06, 'Recovering video encoder; restarting export with all footage, text and effects')
+        return _render_webgl_video_once(project, encoded_path, _force_ffmpeg=True, **kwargs)
+
+
+def _render_webgl_video_once(
     project: dict[str, Any],
     encoded_path: Path,
     *,
@@ -297,6 +332,7 @@ def render_webgl_video(
     progress: ProgressCallback | None = None,
     cancel_check: Callable[[], bool] | None = None,
     frame_transform=None,
+    _force_ffmpeg=False,
 ) -> str:
     """Render the real Odyssey WebGL canvas through Chromium WebCodecs."""
     origin = _local_origin(project.get("__renderOrigin"))
@@ -325,7 +361,7 @@ def render_webgl_video(
         process = subprocess.Popen(
             [
                 str(browser), "--headless=new", "--hide-scrollbars", "--mute-audio",
-                "--enable-webgl", "--enable-unsafe-swiftshader",
+                "--enable-webgl", "--enable-unsafe-swiftshader", "--force_high_performance_gpu",
                 f"--remote-debugging-port={port}", "--remote-allow-origins=*",
                 f"--user-data-dir={profile}", f"--window-size={width},{height}", "about:blank",
             ],
@@ -336,6 +372,7 @@ def render_webgl_video(
         devtools: _DevTools | None = None
         try:
             devtools = _DevTools(_target_socket(port), port)
+            devtools.cancel_check = cancel_check
             devtools.call("Page.enable")
             devtools.call("Runtime.enable")
             devtools.call("Browser.setDownloadBehavior", {
@@ -375,7 +412,7 @@ def render_webgl_video(
             # The complete 3D composition, footage and offline spectrum can be
             # encoded directly on the GPU. Flat PIL typography still uses the
             # lossless canvas bridge; no text layer may be omitted for speed.
-            if frame_transform is None:
+            if frame_transform is None and not _force_ffmpeg:
                 devtools.evaluate(f'VFExport.prepare({width},{height},{json.dumps(clean_project)})')
                 try:
                     if _encode_gpu_canvas(devtools, project, encoded_path, width=width, height=height,
@@ -385,7 +422,7 @@ def render_webgl_video(
                 except Exception as error:
                     if cancel_check and cancel_check():
                         raise RuntimeError('Render cancelled') from error
-                    log_event('warning', 'render', f'GPU canvas encoder unavailable; restarting lossless compatibility pass: {error}')
+                    raise GPUExportRetry(str(error)) from error
                 encoded_path.unlink(missing_ok=True)
 
             setup = {
@@ -396,7 +433,7 @@ def render_webgl_video(
                 "startTime": float((project.get("exportRange") or {}).get("in", 0)),
                 "frames": frame_count,
                 "bitrate": bitrate,
-                "ffmpeg": fallback_reason is not None,
+                "ffmpeg": _force_ffmpeg or fallback_reason is not None,
                 "keyInterval": key_interval,
                 "envelope": envelope,
             }

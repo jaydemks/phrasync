@@ -1,12 +1,15 @@
 "use strict";
+let transcriptionStarting=false,transcriptionCancelRequested=false,transcriptionPollErrorShown=false;
 async function handleAudioFile(file) {
   if (!file) return;
+  const request=beginProjectOperation("audio-import",{source:false});
   setAssetStatus(`Uploading ${file.name}…`);
   try {
     const video = project.mode === "subtitles" && isVideoUpload(file);
     if (video) await assertBrowserPreviewableVideo(file);
     const kind = video ? "video" : "audio";
     const asset = await uploadAsset(kind, file);
+    if(!request.valid())return;
     project.audioAssetId = asset.id;
     project.audio = asset;
     project.sourceAssetId = asset.id;
@@ -14,7 +17,6 @@ async function handleAudioFile(file) {
     if (video) {
       project.background.type = "video";
       project.background.footageEnabled = false;
-      refreshFootageControls();
       project.background.videoAsset = asset;
       project.background.assetId = asset.id;
       project.background.url = asset.url;
@@ -22,6 +24,7 @@ async function handleAudioFile(file) {
     }
     analysis = null;
     if (asset.duration) project.duration = asset.duration;
+    if (video) { attachBackgroundAsset(asset); refreshFootageControls(); }
     els.audioName.textContent = asset.name;
     applyAudioPreview(); applyBackgroundPreview(); updateDurationUI(); scheduleSave();
     const mediaLabel = video ? "Video" : (project.mode === "subtitles" ? "Audio" : "Song");
@@ -36,17 +39,15 @@ async function handleAudioFile(file) {
 }
 async function handleBackgroundFile(file) {
   if (!file || project.background.type === "dynamic") return;
+  const request=beginProjectOperation("background-import",{source:false});
   const kind = project.background.type;
   setAssetStatus(`Uploading ${file.name}…`);
   try {
     if (project.background.type === "video") await assertBrowserPreviewableVideo(file);
     const asset = await uploadAsset(kind, file);
-    if (kind === "image") project.background.imageAsset = asset;
-    else project.background.videoAsset = asset;
-    project.background.assetId = asset.id;
-    project.background.url = asset.url;
-    project.background.name = asset.name;
-    applyBackgroundPreview(); scheduleSave();
+    if(!request.valid()||project.background.type!==kind)return;
+    attachBackgroundAsset({...asset,kind});
+    refreshFootageControls(); applyBackgroundPreview(); footageChanged();
     setAssetStatus(`${kind[0].toUpperCase() + kind.slice(1)} background ready.`, "success");
   } catch (error) {
     setAssetStatus(error.message, "error");
@@ -55,6 +56,7 @@ async function handleBackgroundFile(file) {
 }
 async function handleOCRFile(file) {
   if (!file) return;
+  const request=beginProjectOperation("ocr-import",{source:false});
   els.ocrPick.disabled = true;
   setAssetStatus(`Reading ${file.name} with local OCR…`);
   try {
@@ -64,6 +66,7 @@ async function handleOCRFile(file) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ assetId: asset.id, language: "auto" })
     });
+    if(!request.valid())return;
     els.bulkLyrics.value = result.text || "";
     setAssetStatus(`${result.engine} extracted ${result.lines?.length || 0} text line(s). Review them, then auto-time.`, "success");
     toast("OCR text added to the lyric box.", "success");
@@ -78,6 +81,7 @@ async function handleOCRFile(file) {
 
 async function handleLyricsFile(file) {
   if (!file) return;
+  const request=beginProjectOperation("lyrics-import",{source:false});
   setAssetStatus(`Importing ${file.name}…`);
   try {
     const asset = await uploadAsset("lyrics", file);
@@ -86,6 +90,7 @@ async function handleLyricsFile(file) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ assetId: asset.id, duration: projectDuration() })
     });
+    if(!request.valid())return;
     if (!result.cues?.length) throw new Error("No lyrics were found. Check the file's text and timestamp format.");
     project.cues = result.cues;
     selectedCueId = project.cues[0]?.id || null;
@@ -105,9 +110,11 @@ async function handleLyricsFile(file) {
 
 async function handleFontFile(file) {
   if (!file) return;
+  const request=beginProjectOperation("font-import",{source:false});
   setAssetStatus(`Uploading ${file.name}…`);
   try {
     const asset = await uploadAsset("font", file);
+    if(!request.valid())return;
     await useCustomFont(asset);
   } catch (error) {
     setAssetStatus(error.message, "error");
@@ -117,7 +124,44 @@ async function handleFontFile(file) {
   }
 }
 
+Object.assign(ITALIAN, {
+  "Generate lyrics": "Genera il testo", "Generate subtitles": "Genera sottotitoli",
+  "Generating lyrics…": "Generazione del testo…", "Generating subtitles…": "Generazione sottotitoli…",
+  "Downloading model…": "Download del modello…",
+  "AI lyrics": "Testo con AI", "AI subtitles": "Sottotitoli con AI", "AI model": "Modello AI",
+  "Runs on your computer. First use downloads the selected model.": "Elaborazione sul tuo computer. Al primo utilizzo viene scaricato il modello scelto.",
+  "Tiny · Quick draft": "Tiny · Bozza rapida", "Base · Everyday": "Base · Equilibrato",
+  "Small · More detail": "Small · Più dettaglio", "Medium · High accuracy": "Medium · Alta precisione",
+  "Large v3 · Highest accuracy": "Large v3 · Massima precisione",
+  "Fast drafts with the lowest memory use. Review names and sung words carefully.": "Bozze veloci con un uso minimo di memoria. Ricontrolla nomi e parole cantate.",
+  "A balanced starting point. Larger models can improve accuracy but need more time and memory.": "Un punto di partenza equilibrato. I modelli più grandi possono migliorare la precisione, ma richiedono più tempo e memoria.",
+  "More detail than Base, with moderate processing time and memory use.": "Più dettaglio di Base, con tempi e memoria intermedi.",
+  "Higher accuracy for difficult audio. Needs more memory and processing time.": "Più precisione con audio difficile. Richiede più memoria e tempo di elaborazione.",
+  "Our highest-accuracy option. Best with a capable GPU; allow more time on CPU.": "L'opzione più precisa. Consigliata una GPU adeguata; con la CPU serve più tempo."
+});
+
+function setTranscriptionButtonState(busy, phase = "") {
+  const key = busy ? (phase === "model-download" ? "Downloading model…"
+    : project.mode === "subtitles" ? "Generating subtitles…" : "Generating lyrics…")
+    : MODE_COPY[project.mode]?.transcribe || "Generate lyrics";
+  document.getElementById("transcribeButtonLabel").textContent = t(key);
+  els.transcribeButton.classList.toggle("is-generating", Boolean(busy));
+  els.transcribeButton.setAttribute("aria-busy", String(Boolean(busy)));
+}
+
+function updateModelInsight() {
+  const copy = {
+    tiny: "Fast drafts with the lowest memory use. Review names and sung words carefully.",
+    base: "A balanced starting point. Larger models can improve accuracy but need more time and memory.",
+    small: "More detail than Base, with moderate processing time and memory use.",
+    medium: "Higher accuracy for difficult audio. Needs more memory and processing time.",
+    "large-v3": "Our highest-accuracy option. Best with a capable GPU; allow more time on CPU."
+  };
+  document.getElementById("modelInsight").textContent = t(copy[els.whisperModel.value] || copy.base);
+}
+
 function updateTranscriptionProgress(job) {
+  setTranscriptionButtonState(true, job.phase);
   const downloading = job.phase === "model-download";
   const unknown = downloading && !(job.total_bytes > 0);
   const ratio = downloading ? (job.total_bytes > 0 ? job.downloaded_bytes / job.total_bytes : 0) : Number(job.progress || 0);
@@ -132,11 +176,12 @@ function updateTranscriptionProgress(job) {
 }
 
 function finishTranscriptionControls() {
+  transcriptionCancelRequested=false;transcriptionPollErrorShown=false;
   if (transcriptionPollTimer) clearTimeout(transcriptionPollTimer);
   transcriptionPollTimer = null;
   currentTranscriptionJob = null;
   els.transcribeButton.disabled = false;
-  els.transcribeButton.textContent = t(MODE_COPY[project.mode]?.transcribe || "Transcribe locally");
+  setTranscriptionButtonState(false);
   els.cancelTranscription.disabled = false;
   els.cancelTranscription.hidden = true;
 }
@@ -166,11 +211,17 @@ function applyTranscriptionResult(result) {
 
 async function pollTranscription() {
   if (!currentTranscriptionJob) return;
+  const id=currentTranscriptionJob;
+  let received=false;
   try {
-    const job = await api(`/api/transcriptions/${currentTranscriptionJob}`);
+    const job = await api(`/api/transcriptions/${id}`);
+    received=true;
+    if(id!==currentTranscriptionJob)return;
+    transcriptionPollErrorShown=false;
     updateTranscriptionProgress(job);
     if (job.state === "complete") {
-      applyTranscriptionResult(job.result);
+      if(projectOperationMatches("transcription"))applyTranscriptionResult(job.result);
+      else toast(t("The source changed. The previous transcription was not applied."));
       finishTranscriptionControls();
       return;
     }
@@ -189,9 +240,11 @@ async function pollTranscription() {
     }
     transcriptionPollTimer = setTimeout(pollTranscription, 600);
   } catch (error) {
+    if(id!==currentTranscriptionJob)return;
+    if(received||[404,410].includes(error.status)){toast(error.message,"error");finishTranscriptionControls();return;}
     setAssetStatus(error.message, "error");
-    toast(error.message, "error");
-    finishTranscriptionControls();
+    if(!transcriptionPollErrorShown)toast(error.message, "error");transcriptionPollErrorShown=true;
+    transcriptionPollTimer=setTimeout(pollTranscription,1400);
   }
 }
 
@@ -201,9 +254,10 @@ async function transcribeSong() {
       ? "Add a video or audio file before transcription."
       : "Add a song before transcription.", "error");
   }
-  if (currentTranscriptionJob) return;
+  if (currentTranscriptionJob || transcriptionStarting) return;
+  const request=beginProjectOperation("transcription");transcriptionStarting=true;transcriptionCancelRequested=false;
   els.transcribeButton.disabled = true;
-  els.transcribeButton.textContent = t("Transcribing locally…");
+  setTranscriptionButtonState(true);
   els.cancelTranscription.hidden = false;
   els.transcriptionProgress.hidden = false;
   updateTranscriptionProgress({ progress: 0, message: "Creating transcription job" });
@@ -223,16 +277,18 @@ async function transcribeSong() {
       })
     });
     currentTranscriptionJob = job.id;
+    if(transcriptionCancelRequested||!request.valid())await stopTranscription();
     updateTranscriptionProgress(job);
     pollTranscription();
   } catch (error) {
     setAssetStatus(error.message, "error");
     toast(error.message, "error");
     finishTranscriptionControls();
-  }
+  } finally {transcriptionStarting=false;}
 }
 
 async function stopTranscription() {
+  if(transcriptionStarting&&!currentTranscriptionJob){transcriptionCancelRequested=true;els.cancelTranscription.disabled=true;return;}
   if (!currentTranscriptionJob) return;
   els.cancelTranscription.disabled = true;
   els.transcriptionMessage.textContent = "Stopping after the current audio segment…";

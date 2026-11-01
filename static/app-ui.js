@@ -20,7 +20,7 @@ async function api(path, options = {}) {
   if (!response.ok) {
     window.PhrasyncDiagnostics?.record("error", "api", `${options.method || "GET"} ${path} returned ${response.status}`);
     const detail = typeof data === "object" ? data.detail || JSON.stringify(data) : data;
-    throw new Error(detail || `${response.status} ${response.statusText}`);
+    const error=new Error(detail || `${response.status} ${response.statusText}`);error.status=response.status;throw error;
   }
   return data;
 }
@@ -87,10 +87,11 @@ function normalizeCues() {
 function projectDuration() {
   if (Number(project.timelineDuration) > 0) return Number(project.timelineDuration);
   const cueEnd = Math.max(0, ...project.cues.map(cue => Number(cue.end) || 0));
-  const footageEnd = project.background.footageEnabled ? Math.max(0, ...(project.background.clips || []).map(clip => clip.end)) : 0;
+  const footageEnd = project.background.footageEnabled ? Math.max(0, ...(project.background.clips || []).filter(c=>c.enabled!==false).map(clip => clip.end)) : 0;
+  const effectsEnd = Math.max(0, ...(project.background.effectClips || []).filter(c=>c.enabled!==false).map(c=>c.end));
   const audioEnd=Number(project.audio?.duration) || 0;
   const videoEnd=project.background.type === "video" ? Number(project.background.videoAsset?.duration) || 0 : 0;
-  const mediaEnd = Math.max(audioEnd || cueEnd, videoEnd, footageEnd);
+  const mediaEnd = Math.max(audioEnd || cueEnd, videoEnd, footageEnd, effectsEnd);
   return Math.max(0.5, mediaEnd || 8);
 }
 
@@ -331,6 +332,7 @@ function applyBackgroundTypeUI() {
 
 function applyBackgroundPreview() {
   const type = project.background.type;
+  if (type!=="video" && els.backgroundVideo.src) { els.backgroundVideo.pause();els.backgroundVideo.removeAttribute("src");els.backgroundVideo.load(); }
   els.backgroundImage.hidden = type !== "image";
   els.backgroundVideo.hidden = type !== "video";
   if (type === "image") {

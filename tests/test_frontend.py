@@ -21,8 +21,11 @@ def test_browser_and_desktop_export_folder_controller():
 APP_SCRIPTS = [
     "diagnostics.js",
     "i18n.js",
+    "app-dialogs.js",
     "app-state.js",
+    "app-project-tasks.js",
     "app-modes.js",
+    "app-atmosphere.js",
     "app-ocean.js",
     "app-text-orientation.js",
     "app-ui.js",
@@ -30,6 +33,9 @@ APP_SCRIPTS = [
     "app-lyrics.js",
     "app-visuals.js",
     "media-effects.js",
+    "effect-automation.js",
+    "app-background-bridge.js",
+    "app-effect-tracks.js",
     "visual-clips.js",
     "app-footage.js",
     "app-media-bin.js",
@@ -41,6 +47,7 @@ APP_SCRIPTS = [
     "app-render.js",
     "store-updates.js",
     "app-timeline.js",
+    "app-timeline-navigation.js",
     "app-export-range.js",
     "app.js",
 ]
@@ -136,7 +143,7 @@ def test_project_modes_and_environment_controls_are_wired():
     assert 'uploadAsset(kind, file)' in workflow
     assert 'video/mp4' in modes and 'video/webm' in modes
     assert 'PRESET_LABELS_3D' in modes
-    assert 'resolvedEnvironmentAt(t)' in modes
+    assert 'resolvedEnvironmentAt(t,bg=project.background)' in modes
     assert 'from "/static/scene3d-environment.js"' in scene
     assert "const groundClearance = 0.32" in scene
     assert "style.offset3DX" in scene and "style.offset3DY" in scene

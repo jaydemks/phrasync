@@ -1,4 +1,49 @@
-# Phrasync v0.5.0
+# Phrasync v0.5.1
+
+This release improves export recovery, editing control and weather across backgrounds. It also protects projects from delayed analysis, transcription and import results. Phrasync remains free and local.
+
+The GitHub source and Windows Store package use version 0.5.1 and 0.5.1.0 respectively. The Store package is prepared for submission. The previous approved Store version remains available until certification and rollout complete.
+
+## Export and recovery
+
+- Improve exports that could stall near the beginning when background footage, particles and 3D lyrics were combined. Encoder flushes, frame transfer and cleanup have bounded waits. A failed GPU session can restart the complete pass in a fresh renderer through the compatibility path.
+- Preserve footage, effects, typography and selected export ranges during recovery. Complex compositions use the compatibility encoder when direct browser encoding is unsuitable; available NVIDIA encoding can still be used there. Supported worlds with only weather retain direct GPU canvas encoding.
+- Prefer the high-performance GPU when the browser and Windows support that preference. This is a preference, not a guarantee that every driver selects the same device.
+- Fix direct image/video backgrounds becoming black in some 3D-text exports when effects were disabled. Media loading and seeking now use the shared export loader.
+- Clearly explain in English or Italian that editing is temporarily unavailable during export. Wait for completion or choose Cancel render. Escape, the close button and editing shortcuts no longer dismiss or edit behind an active export.
+- Handle cancellation requested while the job is still starting. Restore controls after completion, failure or confirmed cancellation, clear old errors on retry and recover when an export session no longer exists.
+
+## Timeline and background editing
+
+- The quick image/video background picker creates an editable timeline clip. Its media remains available in the bin; the clip can be selected, removed or disabled. Older background references migrate into the same workflow without repeatedly restoring a removed clip.
+- Looping video backgrounds can cover the selected timeline length. Loop-aware trimming, splitting and source timing preserve the selected section of the source.
+- Add shared navigation controls for lyrics, footage and FX: a zoom slider, zoom buttons, panning and shortcuts to fit the full timeline, selection or IN/OUT range and center the playhead. Mouse-wheel zoom and middle-mouse panning work across the lanes.
+- Display higher background tracks above lower ones, consistently with compositing order. Drag-and-drop destinations and track selection follow that order.
+- Keep enough video decoders for four simultaneous crossfades and two clips preparing ahead. Bound the retained 3D visual contexts so hidden overlapping clips do not accumulate GPU resources.
+
+## Creative effects and atmosphere
+
+- Add four FX timeline lanes for individual drops, light pulses, flashes, light leaks, shake, pendulum movement, gradients, particles, spectrum, black-and-white and weather events. Move, trim, duplicate, disable or remove events, with their own intensity and fades.
+- Choose continuous, single-hit, beat-grid, transient or audio-energy timing where applicable. Global effects also have individual timing controls. Evaluation is shared by preview and export and supports nonzero IN/OUT selections.
+- Place the footage gradient beneath the typography to preserve text colours.
+- Make rain, snow, fog, storms and falling leaves available in Lost in the Ocean, other 3D worlds and overlays above images, videos and layered backgrounds. Add weather intensity, wind and speed controls, plus optional lightning.
+- Anchor precipitation in world space so camera translation and rotation produce proper 3D parallax. Ocean precipitation is bounded at the mean water level. Fixed-size particle buffers and deterministic positioning support scrubbing and export without accumulated simulation state.
+
+## Generation, fonts and project protection
+
+- Replace the old transcription action wording with Generate lyrics or Generate subtitles. Add clearer model descriptions, a green wand button, generation/download states and an animated busy treatment that respects reduced-motion settings.
+- Replace browser message boxes, including Save and Stop confirmations, with dialogs inside Phrasync.
+- Keep analysis, alignment, transcription and media imports attached to the project and source that started them. Delayed responses cannot overwrite a different project, newer manual lyric edits, or a more recent media/font choice. Alignment can wait for an analysis already in progress.
+- Preserve transcription job tracking through a temporary connection failure, allow cancellation during job creation and restore controls if the session is gone. Save and Stop also checks jobs that are still being created.
+- Allow retrying a custom font after a temporary load failure. Resetting the font or selecting another saved font takes precedence over an older pending upload. Existing TTF, OTF, variable-font and CJK collection support remains included.
+
+## Validation and availability
+
+350 automated Windows tests passed, with targeted final checks after the shutdown guard update. Release review included nine exports from a real project, fourteen Windows-package export cases and a forced pixel-readback recovery case. These covered 2D/3D text, multiple background tracks, transitions, IN/OUT, offered frame rates, short selections, 4K and portrait output. A stalled GPU encoder, unavailable browser codec and real export cancellation were exercised. Separate font and weather matrices are also included in the local verification records.
+
+Windows package code and static resources were checked against the tested source. This is not a claim of testing every font, graphics driver or project combination. Native macOS/Linux builds and the reporter's hybrid AMD/NVIDIA machine were not available for testing. A real Store upgrade to this release still needs to be checked after publication.
+
+## Phrasync v0.5.0
 
 This maintenance release focuses on reliable video export, faster supported GPU rendering and closer preview/export synchronization. GitHub provides the source release. The matching 0.5.0.0 Microsoft Store package was submitted for certification on October 24, 2026, with automatic publication after approval. The previous approved version remains available until rollout completes.
 

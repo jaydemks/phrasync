@@ -2,7 +2,7 @@
 
 This release improves export recovery, editing control and weather across backgrounds. It also protects projects from delayed analysis, transcription and import results. Phrasync remains free and local.
 
-The GitHub source and Windows Store package use version 0.5.1 and 0.5.1.0 respectively. The Store package is prepared for submission. The previous approved Store version remains available until certification and rollout complete.
+The GitHub source and Windows Store package use version 0.5.1 and 0.5.1.0 respectively. The Store package was submitted for certification on November 1, 2026, with automatic publication after approval. The previous approved Store version remains available until certification and rollout complete.
 
 ## Export and recovery
 

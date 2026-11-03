@@ -21,6 +21,7 @@ def test_browser_and_desktop_export_folder_controller():
 APP_SCRIPTS = [
     "diagnostics.js",
     "i18n.js",
+    "app-credits.js",
     "app-dialogs.js",
     "app-state.js",
     "app-project-tasks.js",
@@ -47,6 +48,7 @@ APP_SCRIPTS = [
     "app-render.js",
     "store-updates.js",
     "app-timeline.js",
+    "app-workspace.js",
     "app-timeline-navigation.js",
     "app-export-range.js",
     "app.js",

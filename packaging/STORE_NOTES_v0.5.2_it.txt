@@ -1,0 +1,7 @@
+Phrasync 0.5.2 rende l'editor più comodo sugli schermi piccoli.
+
+Nel pannello Testi puoi scorrere dagli strumenti fino all'ultima frase. Nelle finestre basse, l'area per incollare i testi parte chiusa per lasciare più spazio alle frasi. Puoi scegliere tra timeline centrale, con pannelli laterali a tutta altezza, e timeline a tutta larghezza. L'app ricorda la scelta e le dimensioni dei pannelli.
+
+Le maniglie colorate ridimensionano Studio, Testi e timeline con mouse o tastiera. Quando allarghi la timeline in verticale, l'anteprima video si riduce mantenendo le proporzioni.
+
+I contributori della community e i sostenitori compaiono nel benvenuto e nella finestra Crediti e sostenitori, accessibile da File e Impostazioni.

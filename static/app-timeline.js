@@ -352,19 +352,4 @@ function setupTimeline() {
     timeline.draw(); scheduleSave();
   }));
 
-  let dockDrag = null;
-  els.dockGrip.addEventListener("pointerdown", event => {
-    els.dockGrip.setPointerCapture(event.pointerId);
-    dockDrag = { y: event.clientY, height: els.timelineDock.getBoundingClientRect().height };
-  });
-  els.dockGrip.addEventListener("pointermove", event => {
-    if (!dockDrag) return;
-    const height = Math.max(326, Math.min(480, dockDrag.height + (dockDrag.y - event.clientY)));
-    els.timelineDock.style.setProperty("--dock-height", `${height}px`);
-    timeline.resize();
-  });
-  els.dockGrip.addEventListener("pointerup", () => {
-    dockDrag = null;
-    applyStageStyle();
-  });
 }

@@ -18,6 +18,7 @@
           <button type="button" id="resetProjectButton">New project</button>
           <button type="button" id="loadProjectButton">Load project</button>
           <button type="button" id="saveProjectButton">Save project</button>
+          <button type="button" data-open-credits>Credits &amp; supporters</button>
           <small>Ctrl+N · Ctrl+O · Ctrl+S</small>
         </nav></details>
       </div>
@@ -37,7 +38,7 @@
     </header>
 
     <main class="workspace">
-      <aside class="panel controls-panel">
+      <aside class="panel controls-panel" id="studioPanel">
         <div class="panel-title"><h2>Studio</h2><span>Picture · sound · words</span></div>
 
         <div class="mode-card">
@@ -445,6 +446,7 @@
         </details>
       </aside>
 
+      <div class="panel-grip studio-grip" id="studioGrip" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="studioPanel" aria-label="Resize Studio panel" title="Resize Studio panel"></div>
       <section class="preview-column">
         <div class="preview-toolbar">
           <div><strong>Live preview</strong><span id="previewResolution">1920 × 1080 · 30 fps</span></div>
@@ -487,20 +489,22 @@
         </div>
       </section>
 
-      <aside class="panel timeline-panel">
+      <div class="panel-grip lyrics-grip" id="lyricsGrip" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="lyricsPanel" aria-label="Resize lyrics panel" title="Resize lyrics panel"></div>
+      <aside class="panel timeline-panel" id="lyricsPanel">
         <div class="panel-title timeline-title">
           <div><h2 id="cuePanelTitle">Lyrics</h2><span id="cueCount">3 cues</span></div>
           <button class="icon-button" id="addCueButton" type="button" title="Add cue">＋</button>
         </div>
 
-        <div class="bulk-box">
-          <label for="bulkLyrics" id="bulkLyricsLabel">Paste or OCR text</label>
-          <textarea id="bulkLyrics" rows="5" placeholder="One lyric cue per line…"></textarea>
+        <div class="lyrics-scroll" id="lyricsScroll" tabindex="0" role="region" aria-label="Scroll lyrics and editing tools">
+        <details class="bulk-box" id="bulkLyricsTools" open>
+          <summary id="bulkLyricsLabel">Paste or OCR text</summary>
+          <textarea id="bulkLyrics" rows="5" aria-labelledby="bulkLyricsLabel" placeholder="One lyric cue per line…"></textarea>
           <div class="bulk-actions">
             <button type="button" id="appendBulkButton">Append</button>
             <button type="button" class="strong" id="replaceBulkButton">Auto-time & replace</button>
           </div>
-        </div>
+        </details>
 
         <div class="timeline-tools">
           <button type="button" id="clearLyricsButton" aria-label="Clear all lyrics" title="Clear all lyrics">Clear</button>
@@ -519,21 +523,19 @@
         <p class="microcopy">Import replaces the current lyrics, including the English demo. Timed files keep their supplied timing; use Auto-align only if needed.</p>
 
         <div class="cue-list" id="cueList"></div>
-
-        <div class="project-actions">
-          <input class="visually-hidden" id="projectInput" type="file" accept=".json,.phrasync,.verseframe" />
         </div>
+        <input class="visually-hidden" id="projectInput" type="file" accept=".json,.phrasync,.verseframe" />
       </aside>
-    </main>
 
+    <div class="panel-grip dock-grip" id="dockGrip" role="separator" tabindex="0" aria-orientation="horizontal" aria-controls="timelineDock" aria-label="Resize timeline" title="Resize timeline"></div>
     <section class="timeline-dock" id="timelineDock">
-      <div class="dock-grip" id="dockGrip" title="Drag to resize"></div>
       <div class="dock-head">
         <div class="dock-title">
           <strong>Timeline</strong>
           <span id="timelineMeta">no audio</span>
         </div>
         <div class="dock-tools">
+          <button class="chip" id="timelineWidthToggle" type="button" aria-pressed="false" title="Switch between center and full-width timeline">Full-width timeline</button>
           <div class="segmented tiny" id="snapMode">
             <button type="button" data-value="onset" class="active" title="Snap to vocal onsets">Onset</button>
             <button type="button" data-value="beat" title="Snap to the BPM grid">Beat</button>
@@ -582,27 +584,36 @@
         </div>
       </div>
     </section>
+    </main>
   </div>
 
-  <dialog id="onboardingDialog" class="modal onboarding-modal">
+  <dialog id="onboardingDialog" class="modal onboarding-modal" aria-labelledby="onboardingTitle">
     <div class="modal-card onboarding-card">
       <header>
-        <div><span class="eyebrow">WELCOME TO PHRA//SYNC</span><h2>Local lyric videos, without the wait being a mystery</h2></div>
+        <div><span class="eyebrow">WELCOME TO PHRA//SYNC</span><h2 id="onboardingTitle">Local lyric videos, without the wait being a mystery</h2></div>
         <button class="chip language-toggle" id="onboardingLanguageToggle" type="button" title="Switch to Italian" aria-label="Switch interface language">IT</button>
       </header>
       <div class="onboarding-content">
+        <section class="welcome-guide">
         <div class="onboarding-icon" aria-hidden="true">◉</div>
         <h3>Your first transcription downloads an AI model</h3>
-        <p>Choose a Whisper model and select <strong>Transcribe</strong>. The first run downloads that model to this computer. Phrasync will show the download percentage, transferred size, and estimated time remaining.</p>
+        <p>Choose a Whisper model and select <strong>Generate lyrics</strong>. The first run downloads that model to this computer. Phrasync will show the download percentage, transferred size, and estimated time remaining.</p>
         <div class="onboarding-points">
           <p><strong>It happens once per model.</strong><span>Later transcriptions start directly from the local copy.</span></p>
           <p><strong>Your media stays local.</strong><span>Audio, lyrics, transcripts, projects, and exports are not uploaded to Phrasync.</span></p>
           <p><strong>NVIDIA acceleration is automatic.</strong><span>With a compatible NVIDIA GPU and current driver, transcription uses CUDA; otherwise the interface clearly reports CPU mode.</span></p>
         </div>
         <a class="button secondary" href="https://buymeacoffee.com/jaydemks" target="_blank" rel="noopener noreferrer" data-external><span aria-hidden="true">☕</span> Buy me a coffee</a>
-        <label class="toggle-row"><input id="onboardingHide" type="checkbox" /><span>Don't show this again</span></label>
+        </section>
+        <section class="welcome-community" aria-labelledby="welcomeCommunityTitle">
+          <span class="eyebrow">PHRASYNC COMMUNITY</span>
+          <h3 id="welcomeCommunityTitle">Made better, together.</h3>
+          <p>Thank you for helping Phrasync grow.</p>
+          <div id="welcomeCredits" class="welcome-credits"></div>
+          <button class="button secondary welcome-credits-button" type="button" data-open-credits>View all credits</button>
+        </section>
       </div>
-      <footer><button class="button primary" id="onboardingContinue" type="button">Start creating</button></footer>
+      <footer><label class="toggle-row"><input id="onboardingHide" type="checkbox" /><span>Don't show this again</span></label><button class="button primary" id="onboardingContinue" type="button" autofocus>Start creating</button></footer>
     </div>
   </dialog>
 
@@ -621,7 +632,7 @@
       <header><div><span class="eyebrow">PHRASYNC</span><h2>Settings &amp; about</h2></div><button class="icon-button" value="cancel" aria-label="Close">×</button></header>
       <div class="settings-content">
         <section class="integration-card about-card">
-          <div class="integration-heading"><div><strong>Phrasync</strong><span id="aboutVersion">Version 0.4.5</span></div><span class="integration-badge">FREE · LOCAL</span></div>
+          <div class="integration-heading"><div><strong>Phrasync</strong><span id="aboutVersion">Version 0.5.2</span></div><span class="integration-badge">FREE · LOCAL</span></div>
           <p>Local lyric-video and subtitle studio. Transcription, editing and rendering run on your computer.</p>
           <p><span>Created by</span> <strong>Giovanni De Miccoli</strong></p>
           <nav class="author-links" aria-label="Developer links">
@@ -632,6 +643,7 @@
             <a class="coffee-link" href="https://buymeacoffee.com/jaydemks" target="_blank" rel="noopener noreferrer" data-external><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h13v10c0 4-13 4-13 0V8Zm13 1h3c5 0 5 7-3 7M7 2v3M12 2v3M2 23h17"/></svg><span>Buy me a coffee</span></a>
           </nav>
           <small>Optional support via Buy Me a Coffee. No features are locked behind payment. Microsoft is not the fundraiser or sponsor.</small>
+          <div class="settings-actions"><button class="button secondary" type="button" data-open-credits>Credits &amp; supporters</button></div>
         </section>
         <section class="integration-card store-update-card">
           <div class="integration-heading"><div><strong>App updates</strong><span id="storeUpdateVersion">Checking installation…</span></div><span class="integration-badge">Microsoft Store</span></div>
@@ -652,6 +664,18 @@
         </section>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="creditsDialog" class="modal credits-modal" aria-labelledby="creditsTitle" aria-describedby="creditsIntro">
+    <div class="modal-card credits-card">
+      <header><div><span class="eyebrow">PHRASYNC COMMUNITY</span><h2 id="creditsTitle">Credits &amp; supporters</h2></div><button class="icon-button" type="button" aria-label="Close" data-close-credits autofocus>×</button></header>
+      <div class="credits-content">
+        <div class="credits-intro"><span class="credits-emblem" aria-hidden="true">✦</span><div><h3>The people behind the progress</h3><p id="creditsIntro">Feedback, testing and financial support all help this independent project grow.</p></div></div>
+        <div id="fullCredits" class="credits-grid"></div>
+        <div class="credits-footnote"><strong>Every contribution makes a difference.</strong><p>All features stay free. Supporting Phrasync is always optional.</p><p>We use chosen display names or initials, never a full surname without permission.</p></div>
+      </div>
+      <footer><a class="button secondary" href="https://buymeacoffee.com/jaydemks" target="_blank" rel="noopener noreferrer" data-external>Buy me a coffee</a><div><button class="button secondary" id="creditsBack" type="button" data-close-credits hidden>Back to welcome</button><button class="button primary" type="button" data-close-credits>Close</button></div></footer>
+    </div>
   </dialog>
 
   <dialog id="storeUpdateAvailable" class="modal" aria-labelledby="storeUpdateAvailableTitle">
@@ -711,6 +735,7 @@
   <div class="toast-stack" id="toastStack" aria-live="polite"></div>
   <script src="/static/diagnostics.js" defer></script>
   <script src="/static/i18n.js" defer></script>
+  <script src="/static/app-credits.js" defer></script>
   <script src="/static/app-dialogs.js" defer></script>
   <script src="/static/kinetic.js" defer></script>
   <script src="/static/scene3d.js" defer></script>
@@ -745,6 +770,7 @@
   <script src="/static/app-render.js" defer></script>
   <script src="/static/store-updates.js" defer></script>
   <script src="/static/app-timeline.js" defer></script>
+  <script src="/static/app-workspace.js" defer></script>
   <script src="/static/app-timeline-navigation.js" defer></script>
   <script src="/static/app-export-range.js" defer></script>
   <script src="/static/app.js" defer></script>

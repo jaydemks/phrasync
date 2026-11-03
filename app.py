@@ -651,7 +651,7 @@ def _open_desktop_window(url: str) -> None:
         document_url,
         width=1480,
         height=940,
-        min_size=(1100, 720),
+        min_size=(800, 480),
         resizable=True,
         background_color="#0b0912",
         js_api=desktop_export,

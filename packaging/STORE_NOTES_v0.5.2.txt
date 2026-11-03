@@ -1,0 +1,7 @@
+Phrasync 0.5.2 makes the editor easier to use on smaller screens.
+
+The lyrics panel now scrolls from editing tools to the last phrase. In shorter windows, the paste panel starts collapsed so more lyrics are visible. Switch between a centered timeline, with full-height side panels, and a full-width timeline. Your choice and panel sizes are saved.
+
+Colored handles resize Studio, Lyrics and the timeline with a mouse or keyboard. Expanding the timeline scales the video preview while preserving its aspect ratio.
+
+Community Contributors and Supporters are now recognized in the welcome screen and in Credits & supporters, available from File and Settings.

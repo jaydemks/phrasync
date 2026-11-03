@@ -316,7 +316,7 @@ async function openSettings() {
   els.hfTokenReveal.textContent = "Show";
   try {
     const result = await api("/api/settings");
-    document.getElementById("aboutVersion").textContent = `${t("Version")} ${result.version || "0.4.5"}`;
+    document.getElementById("aboutVersion").textContent = `${t("Version")} ${result.version || "0.5.2"}`;
     showHfTokenStatus(result.huggingFace);
     if (!els.settingsDialog.open) els.settingsDialog.showModal();
   } catch (error) {
@@ -356,9 +356,11 @@ async function removeHfToken() {
 }
 
 function init() {
+  initCredits();
   initI18n();
   initTheme();
   setupTimeline();
+  initWorkspaceLayout();
   bindControls();
   initOceanControls();
   initAtmosphereControls();

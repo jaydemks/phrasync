@@ -3,6 +3,7 @@
 const CUE_PAGE_SIZE = 100;
 let cueListPage = 0;
 let cueListSelection = null;
+const lyricsScroller = () => els.lyricsScroll || els.cueList;
 
 function cueListText(en, it) {
   return document.documentElement.lang === "it" ? it : en;
@@ -28,7 +29,11 @@ function cuePager(pageCount) {
     el.type = "button"; el.textContent = label; el.disabled = disabled;
     el.addEventListener("click", action); nav.append(el);
   };
-  const go = page => { renderCueList({ page }); els.cueList.scrollTop = 0; };
+  const go = page => {
+    renderCueList({ page });
+    const scroller = lyricsScroller();
+    scroller.scrollTop += els.cueList.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+  };
   button(cueListText("Previous", "Precedente"), () => go(cueListPage - 1), cueListPage === 0);
   const label = document.createElement("span");
   label.textContent = `${cueListText("Page", "Pagina")} ${cueListPage + 1} / ${pageCount}`;
@@ -58,7 +63,8 @@ function cuePager(pageCount) {
 }
 
 function renderCueList(options = {}) {
-  const scrollTop = els.cueList.scrollTop || 0;
+  const scroller = lyricsScroller();
+  const scrollTop = scroller.scrollTop || 0;
   normalizeCues();
   const pageCount = Math.max(1, Math.ceil(project.cues.length / CUE_PAGE_SIZE));
   const selectedIndex = project.cues.findIndex(cue => cue.id === selectedCueId);
@@ -139,7 +145,7 @@ function renderCueList(options = {}) {
     fragment.append(card);
   });
   els.cueList.append(fragment);
-  els.cueList.scrollTop = scrollTop;
+  scroller.scrollTop = scrollTop;
   els.cueCount.textContent = `${project.cues.length} cue${project.cues.length === 1 ? "" : "s"}`;
 }
 

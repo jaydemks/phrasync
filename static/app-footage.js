@@ -227,8 +227,6 @@ function renderFootageLane() {
   const lane = document.getElementById("footageLane"); if (!lane || !timeline || footageDrag && !footageDrag.pan) return;
   const clips = project.background.clips || [];
   lane.style.height = `${(project.background.tracks?.length || 1) * 38}px`;
-  const fxRows=Math.max(1,...(project.background.effectClips||[]).map(c=>(c.track||0)+1));
-  document.getElementById("timelineDock").style.minHeight = `${Math.min(460,406 + ((project.background.tracks?.length || 1)-1)*38+(fxRows-1)*34)}px`;
   const key = `${timeline.viewStart}:${timeline.viewSpan}:${lane.clientWidth}:${project.background.tracks?.length || 1}:${selectedFootageId}:${JSON.stringify(clips.map(c => [c.id,c.start,c.end,c.track]))}`;
   if (key === footageViewKey) return; footageViewKey = key;
   lane.textContent = "";

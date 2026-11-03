@@ -21,12 +21,13 @@ class Element {
   addEventListener(name, handler) { this.events[name] = handler; }
   querySelectorAll(selector) { return this.children.flatMap(n => [(n.className || '').split(' ').includes(selector.slice(1)) ? n : null, ...n.querySelectorAll(selector)]).filter(Boolean); }
   scrollIntoView() { this.scrolled = true; }
+  getBoundingClientRect() { return {top: this.top || 0}; }
 }
 const document = {documentElement: {lang: 'en'}, events: {}, createElement: tag => new Element(tag),
   createDocumentFragment: () => new Element('fragment'), addEventListener(name, fn) { this.events[name] = fn; }};
 let project = {cues: Array.from({length: 5000}, (_, i) => ({id: `cue-${i}`, start: i * 3, end: i * 3 + 2, text: `Line ${i}`})), timing: {}};
 let selectedCueId = 'cue-0', currentCueId = null, selectedWordIndex = 0, tapQueue = [], timeline = null;
-const els = {cueList: new Element('div'), cueCount: new Element('span')};
+const els = {cueList: new Element('div'), cueCount: new Element('span'), lyricsScroll: new Element('div')};
 const normalizeCues = () => {}, updateWordLabel = () => {}, updateDurationUI = () => {}, scheduleSave = () => {}, seekTo = () => {};
 const $$ = (selector, root) => root.querySelectorAll(selector);
 """
@@ -34,18 +35,20 @@ const $$ = (selector, root) => root.querySelectorAll(selector);
 const cards = () => els.cueList.querySelectorAll('.cue-card');
 const nav = () => els.cueList.children[0];
 renderCueList();
-els.cueList.scrollTop = 240;
+els.lyricsScroll.scrollTop = 240;
 renderCueList({preservePage: true});
-assert.equal(els.cueList.scrollTop, 240);
+assert.equal(els.lyricsScroll.scrollTop, 240);
 assert.equal(cards().length, 100);
 assert.equal(nav().children[0].disabled, true);
+els.cueList.top = 32;
 nav().children[2].events.click();
+assert.equal(els.lyricsScroll.scrollTop, 272);
 assert.equal(cards()[0].dataset.id, 'cue-100');
 assert.equal(cards()[0].children[0].textContent, '101');
-els.cueList.scrollTop = 320; selectedCueId = 'cue-4999';
+els.lyricsScroll.scrollTop = 320; selectedCueId = 'cue-4999';
 renderCueList({preservePage: true});
 assert.equal(cards()[0].dataset.id, 'cue-100');
-assert.equal(els.cueList.scrollTop, 320);
+assert.equal(els.lyricsScroll.scrollTop, 320);
 selectedCueId = 'cue-0'; renderCueList({preservePage: true});
 assert.equal(selectedCueId, 'cue-0'); // browsing never silently changes edit selection
 const text = cards()[0].children[1].children[1];

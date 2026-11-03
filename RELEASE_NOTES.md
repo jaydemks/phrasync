@@ -1,4 +1,19 @@
-# Phrasync v0.5.1
+# Phrasync v0.5.2
+
+## Editor layout on smaller screens
+
+- Scroll the Lyrics panel from the editing tools through the last phrase. The paste area starts collapsed in shorter windows to keep more lyrics in view.
+- Switch between a centered timeline, with full-height Studio and Lyrics panels, and a full-width timeline. Phrasync saves the layout choice and panel sizes.
+- Resize both side panels and the timeline with colored handles. The handles also support keyboard resizing. The video preview scales proportionally as the timeline expands.
+- The compact layout was checked at 1024 × 600 and 800 × 480, including scrolling to and editing the last lyric.
+
+## Community credits
+
+- See Community Contributors and Supporters in the welcome screen and in Credits & supporters, accessible from File and Settings.
+
+The Microsoft Store package for this release is version 0.5.2.0. Store availability follows Microsoft certification and rollout.
+
+## Phrasync v0.5.1
 
 This release improves export recovery, editing control and weather across backgrounds. It also protects projects from delayed analysis, transcription and import results. Phrasync remains free and local.
 
